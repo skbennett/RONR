@@ -29,6 +29,10 @@ body {
     color: #fff;
 }
 
+.nav-left a {
+    text-decoration: none;
+}
+
 .nav-links {
     display: flex;
     gap: 24px;
@@ -37,7 +41,6 @@ body {
     color: #fff;
     text-decoration: none;
     font-size: 1em;
-    font-weight: 500;
 }
 .nav-links a:hover {
     text-decoration: underline;
