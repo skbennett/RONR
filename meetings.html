@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Meetings - CourtOrder</title>
     <link rel="stylesheet" href="src/style.css">
     <link rel="stylesheet" href="src/meetings-style.css">
 </head>
 <body>
+    <!-- Navbar -->
     <nav class="navbar">
         <div class="nav-left">
             <a href="index.html">
@@ -20,35 +22,20 @@
         </div>
         <button class="sign-in-btn" onclick="window.location.href='login.html'">Sign In</button>
     </nav>
-    <div class="meetings-container">
-        <div class="meeting-card">
-            <div class="meeting-info">
-                <div class="meeting-title">Board Meeting</div>
-                <div class="meeting-details">Date: Sep 25, 2025 &nbsp;|&nbsp; Time: 3:00 PM</div>
-            </div>
-            <button class="join-btn">Join</button>
-        </div>
-        <div class="meeting-card">
-            <div class="meeting-info">
-                <div class="meeting-title">Finance Committee</div>
-                <div class="meeting-details">Date: Sep 27, 2025 &nbsp;|&nbsp; Time: 10:00 AM</div>
-            </div>
-            <button class="join-btn">Join</button>
-        </div>
-        <div class="meeting-card">
-            <div class="meeting-info">
-                <div class="meeting-title">Annual General Assembly</div>
-                <div class="meeting-details">Date: Oct 2, 2025 &nbsp;|&nbsp; Time: 1:00 PM</div>
-            </div>
-            <button class="join-btn">Join</button>
-        </div>
-        <div class="meeting-card">
-            <div class="meeting-info">
-                <div class="meeting-title">Project Planning</div>
-                <div class="meeting-details">Date: Oct 5, 2025 &nbsp;|&nbsp; Time: 4:30 PM</div>
-            </div>
-            <button class="join-btn">Join</button>
-        </div>
+
+    <!-- Add New Meeting Form -->
+    <div class="add-meeting-form">
+        <h3>Add a New Meeting</h3>
+        <input type="text" id="new-title" placeholder="Meeting Title">
+        <input type="date" id="new-date">
+        <input type="time" id="new-time">
+        <button id="add-meeting-btn">Create Meeting</button>
     </div>
+
+    <!-- Meetings Container -->
+    <div class="meetings-container"></div>
+
+    <!-- Script -->
+    <script src="meetings.js"></script>
 </body>
 </html>
