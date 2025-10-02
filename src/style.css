@@ -59,3 +59,20 @@ body {
 .sign-in-btn:hover {
     background-color: #e6f2ea;
 }
+
+/* Inline styles moved from HTML */
+.gavel-logo {
+    height: 50px;
+    vertical-align: middle;
+    margin-right: 12px;
+}
+
+.main-content h1 {
+    font-weight: bold;
+}
+
+.congress-image {
+    width: 100%;
+    margin-top: 24px;
+    border-radius: 12px;
+}
