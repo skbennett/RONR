@@ -1,23 +1,20 @@
 // Meetings page authentication and common functionality
 
-// Authentication check and button handler
+// Authentication check (no redirect - let access-control.js handle it)
 function checkAuth() {
     const authData = localStorage.getItem('courtorder_auth');
     if (!authData) {
-        window.location.href = 'login.html';
         return false;
     }
     
     try {
         const auth = JSON.parse(authData);
         if (!auth.isLoggedIn) {
-            window.location.href = 'login.html';
             return false;
         }
         return true;
     } catch (e) {
         localStorage.removeItem('courtorder_auth');
-        window.location.href = 'login.html';
         return false;
     }
 }
@@ -59,8 +56,10 @@ function updateAuthButton() {
     authBtn.textContent = 'Sign In';
 }
 
-// Check authentication on page load
+// Check authentication on page load (only update button if authenticated)
 document.addEventListener('DOMContentLoaded', () => {
+    // Only update auth button if user is authenticated
+    // If not authenticated, access-control.js will handle showing access denied page
     if (checkAuth()) {
         updateAuthButton();
     }

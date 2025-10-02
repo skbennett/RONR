@@ -44,3 +44,26 @@
 .login-container button.create-account:hover {
     background-color: #e6f2ea;
 }
+
+/* Login actions styling */
+.login-actions {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(122, 174, 140, 0.3);
+}
+
+.back-to-home-btn {
+    background-color: #f8f9fa !important;
+    color: #2c5530 !important;
+    border: 2px solid #7AAE8C !important;
+    font-size: 0.9em !important;
+    padding: 8px 16px !important;
+    width: auto !important;
+    margin-top: 0 !important;
+}
+
+.back-to-home-btn:hover {
+    background-color: #e9ecef !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
