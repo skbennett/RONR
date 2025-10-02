@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Meetings - CourtOrder</title>
+    <title>Coordination - CourtOrder</title>
     <link rel="stylesheet" href="src/style.css">
-    <link rel="stylesheet" href="src/meetings-style.css">
+    <link rel="stylesheet" href="src/coordination-style.css">
 </head>
 <body>
     <!-- Navbar -->
@@ -23,22 +23,51 @@
         <button class="sign-in-btn" id="auth-btn" onclick="handleAuthButton()">Sign In</button>
     </nav>
 
-    <!-- Add New Meeting Form -->
-    <div class="add-meeting-form">
-        <h3>Add a New Meeting</h3>
-        <input type="text" id="new-title" placeholder="Meeting Title">
-        <input type="date" id="new-date">
-        <input type="time" id="new-time">
-        <button id="add-meeting-btn">Create Meeting</button>
-    </div>
+    <!-- Main Content -->
+    <div class="coordination-container">
+        <h2>Meeting Coordination</h2>
+        
+        <!-- Session Status -->
+        <div class="session-status">
+            <h3>Session Status</h3>
+            <div id="session-info">
+                <p>No active session</p>
+                <button id="start-session-btn" class="primary-btn">Start New Session</button>
+            </div>
+        </div>
 
-    <!-- Meetings Container -->
-    <div class="meetings-container"></div>
+        <!-- New Motion Form -->
+        <div class="motion-form" id="motion-form" style="display: none;">
+            <h3>Propose New Motion</h3>
+            <input type="text" id="motion-title" placeholder="Motion Title">
+            <textarea id="motion-description" placeholder="Motion Description" rows="3"></textarea>
+            <div class="form-buttons">
+                <button id="submit-motion-btn" class="primary-btn">Submit Motion</button>
+                <button id="cancel-motion-btn" class="secondary-btn">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Active Motions -->
+        <div class="active-motions">
+            <h3>Active Motions</h3>
+            <div id="motions-container">
+                <p class="no-motions">No active motions</p>
+            </div>
+        </div>
+
+        <!-- Voting History -->
+        <div class="voting-history">
+            <h3>Voting History</h3>
+            <div id="history-container">
+                <p class="no-history">No voting history</p>
+            </div>
+        </div>
+    </div>
 
     <!-- Scripts -->
     <script src="src/router.js"></script>
     <script src="src/data-manager.js"></script>
-    <script src="meetings.js"></script>
+    <script src="src/coordination.js"></script>
     <script>
         // Authentication check and button handler
         function checkAuth() {

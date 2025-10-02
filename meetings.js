@@ -1,16 +1,11 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const STORAGE_KEY = "allMeetings";
-
-    // Original meetings (always present)
-    const originalMeetings = [
-        { title: "Board Meeting", date: "2025-09-25", time: "15:00", joined: false },
-        { title: "Finance Committee", date: "2025-09-27", time: "10:00", joined: false },
-        { title: "Annual General Assembly", date: "2025-10-02", time: "13:00", joined: false },
-        { title: "Project Planning", date: "2025-10-05", time: "16:30", joined: false }
-    ];
-
-    // Load user-added meetings from localStorage
-    let addedMeetings = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    // Wait for data manager to be available
+    if (typeof window.dataManager === 'undefined') {
+        setTimeout(() => {
+            document.dispatchEvent(new Event('DOMContentLoaded'));
+        }, 100);
+        return;
+    }
 
     const container = document.querySelector(".meetings-container");
 
@@ -29,14 +24,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderMeetings() {
-        const allMeetings = [...originalMeetings, ...addedMeetings];
+        const allMeetings = window.dataManager.getAllMeetings();
 
         // Sort chronologically
         allMeetings.sort((a, b) => new Date(`${a.date}T${a.time}`) - new Date(`${b.date}T${b.time}`));
 
         container.innerHTML = "";
 
-        allMeetings.forEach((meeting, index) => {
+        allMeetings.forEach((meeting) => {
             const card = document.createElement("div");
             card.className = "meeting-card";
 
@@ -54,28 +49,23 @@ document.addEventListener("DOMContentLoaded", () => {
             // Join button
             const joinBtn = card.querySelector(".join-btn");
             joinBtn.addEventListener("click", () => {
-                meeting.joined = !meeting.joined;
-
-                // Persist for added meetings only
-                if (index >= originalMeetings.length) {
-                    addedMeetings[index - originalMeetings.length].joined = meeting.joined;
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(addedMeetings));
-                }
-
+                const newJoinedStatus = !meeting.joined;
+                window.dataManager.updateMeeting(meeting.id, { joined: newJoinedStatus });
                 renderMeetings();
             });
 
             // Remove button
             const removeBtn = card.querySelector(".remove-btn");
             removeBtn.addEventListener("click", () => {
-                if (index >= originalMeetings.length) {
-                    // Remove from addedMeetings
-                    addedMeetings.splice(index - originalMeetings.length, 1);
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(addedMeetings));
+                if (meeting.createdBy && meeting.createdBy !== 'system') {
+                    // User-created meeting - can be deleted
+                    if (confirm(`Are you sure you want to delete "${meeting.title}"?`)) {
+                        window.dataManager.deleteMeeting(meeting.id);
+                        renderMeetings();
+                    }
                 } else {
-                    // For original meetings, just hide temporarily by removing from DOM
-                    // They will reappear on reload because we don't persist removal
-                    container.removeChild(card);
+                    // Original meeting - just hide temporarily
+                    card.style.display = 'none';
                 }
             });
 
@@ -97,11 +87,16 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        addedMeetings.push({ title, date: dateInput, time: timeInput, joined: false });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(addedMeetings));
+        // Add meeting using data manager
+        window.dataManager.addMeeting({
+            title: title,
+            date: dateInput,
+            time: timeInput
+        });
 
         renderMeetings();
 
+        // Clear form
         document.getElementById("new-title").value = "";
         document.getElementById("new-date").value = "";
         document.getElementById("new-time").value = "";

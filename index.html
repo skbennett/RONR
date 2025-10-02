@@ -2,9 +2,12 @@
 <html>
 <head>
     <title>CourtOrder</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws: wss:;">
     <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
+    <script src="src/router.js"></script>
+    <script src="src/data-manager.js"></script>
     <nav class="navbar">
     <div class="nav-left">
         <a href="index.html">
@@ -15,9 +18,9 @@
     <div class="nav-links">
         <a href="https://en.wikipedia.org/wiki/Robert%27s_Rules_of_Order" target="_blank">About</a>
         <a href="meetings.html">Meetings</a>
-        <a href="#">Coordination</a>
+        <a href="coordination.html">Coordination</a>
     </div>
-    <button class="sign-in-btn" onclick="window.location.href='login.html'">Sign In</button>
+    <button class="sign-in-btn" id="auth-btn" onclick="handleAuthButton()">Sign In</button>
 </nav>
     <div class="main-content">
     <h1 style="font-weight:bold;">CourtOrder</h1>
@@ -25,5 +28,54 @@
         Robert's Rules of Order, streamlining motions, debates, and votes into one easy platform.
     <img src="Images\House of Reps.webp" alt="Congress Meeting" style="width:100%;margin-top:24px;border-radius:12px;">
     </div>
+
+    <script>
+        // Authentication button handler
+        function handleAuthButton() {
+            const authData = localStorage.getItem('courtorder_auth');
+            if (authData) {
+                try {
+                    const auth = JSON.parse(authData);
+                    if (auth.isLoggedIn) {
+                        // User is logged in, show logout option
+                        if (confirm('Do you want to sign out?')) {
+                            localStorage.removeItem('courtorder_auth');
+                            location.reload();
+                        }
+                        return;
+                    }
+                } catch (e) {
+                    // Invalid auth data, clear it
+                    localStorage.removeItem('courtorder_auth');
+                }
+            }
+            // User is not logged in, redirect to login
+            window.location.href = 'login.html';
+        }
+
+        // Update auth button based on login status
+        function updateAuthButton() {
+            const authBtn = document.getElementById('auth-btn');
+            const authData = localStorage.getItem('courtorder_auth');
+            
+            if (authData) {
+                try {
+                    const auth = JSON.parse(authData);
+                    if (auth.isLoggedIn) {
+                        authBtn.textContent = `Sign Out (${auth.username})`;
+                        return;
+                    }
+                } catch (e) {
+                    localStorage.removeItem('courtorder_auth');
+                }
+            }
+            authBtn.textContent = 'Sign In';
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAuthButton();
+        });
+    </script>
 </body>
 </html>
