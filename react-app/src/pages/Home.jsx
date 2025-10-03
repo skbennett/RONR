@@ -19,6 +19,8 @@ function Home() {
         alt="Congress Meeting" 
         style={{ width: '100%', marginTop: '24px', borderRadius: '12px' }} 
       />
+      <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#005a9c'}}>CourtOrder helps organizations run structured, efficient meetings by following 
+        Robert's Rules of Order, streamlining motions, debates, and votes into one easy platform.</p>
     </div>
   );
 }

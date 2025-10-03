@@ -1,5 +1,4 @@
 // src/components/Navbar.jsx
-// src/components/Navbar.jsx
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -34,7 +33,7 @@ function Navbar() {
 
         {/* --- Desktop Navigation Links --- */}
         <div className="nav-links desktop-only">
-          <Link to="/meetings">Meetings</Link>
+          <Link to="/Meetings">Meetings</Link>
           <Link to="/coordination">Coordination</Link>
           <a href="https://en.wikipedia.org/wiki/Robert%27s_Rules_of_Order" target="_blank" rel="noopener noreferrer">
             About
@@ -42,7 +41,7 @@ function Navbar() {
         </div>
         
         {/* --- Desktop Sign-In Button --- */}
-        <button className="sign-in-btn desktop-only" onClick={() => navigate('/login')}>
+        <button className="sign-in-btn desktop-only" onClick={() => navigate('/Login')}>
           Sign In
         </button>
 
