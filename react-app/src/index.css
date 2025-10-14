@@ -1,0 +1,126 @@
+/* --- Global Styles & Resets --- */
+:root {
+  /* Define all your variables here */
+  --primary-color: #005a9c; /* A professional blue for titles and buttons */
+  --secondary-color: #f8f9fa; /* A light grey for backgrounds like the navbar */
+  --text-color: #333333; /* Dark grey for readable text */
+  --background-color: #FFFFFF; /* A clean white background for the body */
+  --border-radius: 8px;
+
+  /* Basic font setup */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+
+  /* Technical properties for better font rendering */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  min-height: 100vh;
+}
+
+/* --- Main Content Area (Unified Rule) --- */
+.main-content {
+  max-width: 960px;
+  margin: 2rem auto; /* Centers the content and adds space */
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.main-content h1 {
+  font-size: 2.5rem;
+  color: var(--primary-color);
+}
+
+/* --- Navbar Styles --- */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background-color: var(--secondary-color);
+  border-bottom: 1px solid #dee2e6;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.nav-links a {
+  text-decoration: none;
+  color: var(--text-color);
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.nav-links a:hover {
+  color: var(--primary-color);
+}
+
+.sign-in-btn {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s;
+}
+
+.sign-in-btn:hover {
+  background-color: #004578; /* A darker blue on hover */
+}
+
+.mobile-only {
+  display: none;
+}
+
+/* This is the media query. It applies styles ONLY when the browser
+  window is 768 pixels wide or less (i.e., tablet or mobile size).
+*/
+@media (max-width: 768px) {
+  /* On mobile, HIDE the desktop-only elements */
+  .desktop-only {
+    display: none;
+  }
+  
+  /* On mobile, SHOW the mobile-only elements (the hamburger button) */
+  .mobile-only {
+    display: block; /* 'block' makes it visible */
+  }
+}
+
+/* --- Styles for the slide-out mobile menu itself --- */
+/* (These styles below should already be in your file, but ensure they are correct) */
+
+.mobile-menu {
+  position: fixed;
+  top: 0;
+  right: -300px;
+  width: 250px;
+  height: 100%;
+  background-color: var(--secondary-color);
+  box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  transition: right 0.3s ease-in-out;
+  z-index: 1000;
+}
+
+.mobile-menu.open {
+  right: 0;
+}
