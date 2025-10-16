@@ -685,7 +685,7 @@ body {
     font-size: 0.9em !important;
     padding: 8px 16px !important;
     width: auto !important;
-    margin-top: 0 !important;
+    margin-top: 14px !important; /* Add separation from Create Account */
 }
 
 .back-to-home-btn:hover {

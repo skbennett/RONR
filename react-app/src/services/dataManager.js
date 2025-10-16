@@ -147,7 +147,7 @@ export const deleteMeeting = (meetingId) => {
     return false;
 };
 
-// --- Coordination-Specific Methods (Add these as you build the page) ---
+// --- Coordination-Specific Methods ---
 
 export const getCoordinationData = () => {
     return getPageData('coordination');
@@ -157,4 +157,91 @@ export const updateCoordinationData = (updates) => {
     const currentData = getPageData('coordination') || {};
     const newData = { ...currentData, ...updates };
     return setPageData('coordination', newData);
+};
+
+export const addCoordinationMotion = ({ title, description, sessionId }) => {
+    const data = getPageData('coordination');
+    if (!data) return null;
+    const id = data.nextMotionId++;
+    const motion = {
+        id,
+        title,
+        description,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        createdBy: getCurrentUser(),
+        sessionId,
+        votes: { for: 0, against: 0, abstain: 0 },
+        voters: [],
+    };
+    data.activeMotions.unshift(motion);
+    setPageData('coordination', data);
+    return motion;
+};
+
+export const startVotingForMotion = (motionId) => {
+    const data = getPageData('coordination');
+    if (!data) return false;
+    const motion = data.activeMotions.find(m => m.id === motionId);
+    if (!motion) return false;
+    motion.status = 'voting';
+    motion.votingStartTime = new Date().toISOString();
+    return setPageData('coordination', data);
+};
+
+export const voteOnCoordinationMotion = (motionId, vote, username) => {
+    const data = getPageData('coordination');
+    if (!data) return false;
+    const motion = data.activeMotions.find(m => m.id === motionId);
+    if (!motion || motion.status !== 'voting') return false;
+    if (!['for', 'against', 'abstain'].includes(vote)) return false;
+    motion.voters = motion.voters || [];
+    motion.userVotes = motion.userVotes || {};
+    // If user already finalized (locked), block further changes
+    if (motion.voters.includes(username)) return false;
+    motion.votes = motion.votes || { for: 0, against: 0, abstain: 0 };
+    // If user had a pending vote (not locked), adjust counts
+    const prior = motion.userVotes[username];
+    if (prior) {
+        if (prior !== vote) {
+            motion.votes[prior] = Math.max(0, (motion.votes[prior] || 0) - 1);
+            motion.votes[vote] = (motion.votes[vote] || 0) + 1;
+            motion.userVotes[username] = vote;
+        }
+    } else {
+        motion.votes[vote] = (motion.votes[vote] || 0) + 1;
+        motion.userVotes[username] = vote;
+    }
+    return setPageData('coordination', data);
+};
+
+export const undoVoteOnCoordinationMotion = (motionId, username) => {
+    const data = getPageData('coordination');
+    if (!data) return false;
+    const motion = data.activeMotions.find(m => m.id === motionId);
+    if (!motion || motion.status !== 'voting') return false;
+    motion.voters = motion.voters || [];
+    // If already locked, cannot undo
+    if (motion.voters.includes(username)) return false;
+    motion.userVotes = motion.userVotes || {};
+    const prior = motion.userVotes[username];
+    if (!prior) return false;
+    motion.votes = motion.votes || { for: 0, against: 0, abstain: 0 };
+    motion.votes[prior] = Math.max(0, (motion.votes[prior] || 0) - 1);
+    delete motion.userVotes[username];
+    return setPageData('coordination', data);
+};
+
+export const finalizeVoteLockOnCoordinationMotion = (motionId, username) => {
+    const data = getPageData('coordination');
+    if (!data) return false;
+    const motion = data.activeMotions.find(m => m.id === motionId);
+    if (!motion || motion.status !== 'voting') return false;
+    motion.voters = motion.voters || [];
+    motion.userVotes = motion.userVotes || {};
+    if (!motion.userVotes[username]) return false; // nothing to lock
+    if (!motion.voters.includes(username)) {
+        motion.voters.push(username);
+    }
+    return setPageData('coordination', data);
 };
