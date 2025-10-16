@@ -34,6 +34,16 @@ const MotionCard = ({ motion, onVote }) => {
           {hasVoted && <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>You have voted on this motion.</p>}
         </div>
       )}
+      {motion.status === 'completed' && (
+        <div className="completed-section">
+          <div className="vote-counts">
+            <div className="vote-count"><span>For:</span><span className="count">{motion.votes.for}</span></div>
+            <div className="vote-count"><span>Against:</span><span className="count">{motion.votes.against}</span></div>
+            <div className="vote-count"><span>Abstain:</span><span className="count">{motion.votes.abstain}</span></div>
+          </div>
+          <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>Motion completed and moved to history.</p>
+        </div>
+      )}
     </div>
   );
 };
@@ -54,7 +64,8 @@ function Coordination() {
     // Mocking initial data load from a data manager or API
     const initialMotions = [
       { id: 1, title: 'Adopt New Logo', description: 'Motion to adopt the new branding package as the official logo.', status: 'voting', createdAt: new Date().toISOString(), createdBy: 'Jane Doe', votes: { for: 3, against: 1, abstain: 1 }, voters: [] },
-      { id: 2, title: 'Approve Q4 Budget', description: '', status: 'pending', createdAt: new Date().toISOString(), createdBy: 'John Smith', votes: { for: 0, against: 0, abstain: 0 }, voters: [] }
+      { id: 2, title: 'Approve Q4 Budget', description: 'Motion to approve the quarterly budget allocation for Q4 2025.', status: 'pending', createdAt: new Date().toISOString(), createdBy: 'John Smith', votes: { for: 0, against: 0, abstain: 0 }, voters: [] },
+      { id: 4, title: 'Sample Motion', description: 'This is a sample motion that will always be present for demonstration purposes.', status: 'voting', createdAt: new Date().toISOString(), createdBy: 'System', votes: { for: 0, against: 0, abstain: 0 }, voters: [], isSample: true }
     ];
     const initialHistory = [
       { id: 3, title: 'Adjourn Previous Meeting', status: 'passed', createdAt: new Date().toISOString(), endTime: new Date().toISOString(), votes: { for: 5, against: 0, abstain: 0 } }
@@ -106,14 +117,31 @@ function Coordination() {
   const handleVote = (motionId, voteType) => {
     setActiveMotions(activeMotions.map(motion => {
       if (motion.id === motionId && !motion.voters.includes('user123')) {
-        return {
+        const updatedMotion = {
           ...motion,
           votes: { ...motion.votes, [voteType]: motion.votes[voteType] + 1 },
           voters: [...motion.voters, 'user123'],
         };
+        
+        // If it's not a sample motion, move it to completed status after voting
+        if (!motion.isSample) {
+          updatedMotion.status = 'completed';
+          updatedMotion.completedAt = new Date().toISOString();
+          // Move to voting history
+          setVotingHistory(prev => [updatedMotion, ...prev]);
+        }
+        
+        return updatedMotion;
       }
       return motion;
     }));
+    
+    // Remove non-sample motions from active motions after voting
+    setTimeout(() => {
+      setActiveMotions(prev => prev.filter(motion => 
+        motion.id !== motionId || motion.isSample
+      ));
+    }, 100);
   };
 
   const handleDeleteHistory = (itemId) => {

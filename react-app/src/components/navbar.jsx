@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 // Import your logo image
 import gavelLogo from '../Images/Court Gavel.png';
@@ -9,12 +10,19 @@ import gavelLogo from '../Images/Court Gavel.png';
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
+  const { isAuthenticated, user, logout } = useAuth();
 
   const handleLinkClick = (path) => {
     setIsMenuOpen(false);
     if (path) {
       navigate(path);
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    setIsMenuOpen(false);
+    navigate('/');
   };
 
   return (
@@ -27,8 +35,8 @@ function Navbar() {
               alt="Gavel Logo" 
               style={{ height: '40px', verticalAlign: 'middle' }} 
             />
+            <span style={{ marginLeft: '12px' }}>CourtOrder</span>
           </Link>
-          <span style={{ marginLeft: '12px' }}>CourtOrder</span>
         </div>
 
         {/* --- Desktop Navigation Links --- */}
@@ -40,10 +48,18 @@ function Navbar() {
           </a>
         </div>
         
-        {/* --- Desktop Sign-In Button --- */}
-        <button className="sign-in-btn desktop-only" onClick={() => navigate('/Login')}>
-          Sign In
-        </button>
+        {/* --- Desktop Auth Button --- */}
+        {isAuthenticated ? (
+          <div className="user-info desktop-only">
+            <button className="logout-btn" onClick={handleLogout}>
+              Sign Out (Admin)
+            </button>
+          </div>
+        ) : (
+          <button className="sign-in-btn desktop-only" onClick={() => navigate('/login')}>
+            Sign In
+          </button>
+        )}
 
         {/* --- Hamburger Menu Button (Mobile Only) --- */}
         <button className="hamburger-btn mobile-only" onClick={() => setIsMenuOpen(!isMenuOpen)}>
@@ -61,9 +77,17 @@ function Navbar() {
         <a href="https://en.wikipedia.org/wiki/Robert%27s_Rules_of_Order" target="_blank" rel="noopener noreferrer" onClick={() => setIsMenuOpen(false)}>
             About
         </a>
-        <button className="sign-in-btn-mobile" onClick={() => handleLinkClick('/login')}>
-          Sign In
-        </button>
+        {isAuthenticated ? (
+          <div className="mobile-user-info">
+            <button className="logout-btn-mobile" onClick={handleLogout}>
+              Sign Out (Admin)
+            </button>
+          </div>
+        ) : (
+          <button className="sign-in-btn-mobile" onClick={() => handleLinkClick('/login')}>
+            Sign In
+          </button>
+        )}
       </div>
     </>
   );

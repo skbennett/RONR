@@ -34,16 +34,27 @@ body {
     text-decoration: none;
 }
 
+/* Keep logo/home link the same color even after click */
+.nav-left a,
+.nav-left a:visited {
+    color: inherit;
+}
+
 .nav-links {
     display: flex;
     gap: 24px;
 }
 .nav-links a {
-    color: #fff;
+    color: #2c5530; /* Dark green for better contrast on navbar */
     text-decoration: none;
     font-size: 1em;
+    font-weight: 600;
+}
+.nav-links a:visited {
+    color: #2c5530;
 }
 .nav-links a:hover {
+    color: #1976d2; /* Blue on hover */
     text-decoration: underline;
 }
 .sign-in-btn {
@@ -58,6 +69,22 @@ body {
     transition: background 0.2s;
 }
 .sign-in-btn:hover {
+    background-color: #e6f2ea;
+}
+
+/* Match logout button to sign-in styling on desktop */
+.logout-btn {
+    background-color: #fff;
+    color: #7AAE8C;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background 0.2s;
+}
+.logout-btn:hover {
     background-color: #e6f2ea;
 }
 
@@ -109,6 +136,9 @@ body {
   font-size: 1.2rem;
   text-align: left;
 }
+.mobile-menu a:visited {
+  color: #333;
+}
 
 .mobile-menu .close-btn {
   background: none;
@@ -122,6 +152,18 @@ body {
 }
 
 .mobile-menu .sign-in-btn-mobile {
+  background-color: #7AAE8C;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+/* Mobile logout button styled like mobile sign-in */
+.mobile-menu .logout-btn-mobile {
   background-color: #7AAE8C;
   color: white;
   border: none;

@@ -1,6 +1,7 @@
 // /pages/Login.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 class AuthManager {
     constructor() {
@@ -46,6 +47,7 @@ function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   // --- EVENT HANDLERS ---
   const handleLogin = (e) => {
@@ -55,7 +57,7 @@ function Login() {
       return;
     }
     if (authManager.validateUser(username, password)) {
-      authManager.login(username);
+      login(username);
       alert(`Welcome, ${username}!`);
       navigate('/'); // Redirect to home page after successful login
     } else {

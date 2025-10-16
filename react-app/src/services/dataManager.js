@@ -40,12 +40,22 @@ export const initializeAllData = () => {
     if (!getPageData('meetings')) {
         setPageData('meetings', {
             originalMeetings: [
-                { id: 1, title: "Board Meeting", date: "2025-09-25", time: "15:00", joined: false, createdBy: "system" },
-                { id: 2, title: "Finance Committee", date: "2025-09-27", time: "10:00", joined: false, createdBy: "system" },
+                { id: 1, title: "Board Meeting", date: "2025-01-15", time: "15:00", joined: false, createdBy: "system" },
+                { id: 2, title: "Finance Committee", date: "2025-01-20", time: "10:00", joined: false, createdBy: "system" },
+                { id: 3, title: "Planning Commission", date: "2025-01-25", time: "14:30", joined: false, createdBy: "system" },
+                { id: 4, title: "Public Safety Review", date: "2025-01-30", time: "16:00", joined: false, createdBy: "system" },
             ],
             userMeetings: [],
+            temporarilyRemoved: [],
             nextMeetingId: 5,
         });
+    } else {
+        // Reset temporarily removed meetings on page load
+        const data = getPageData('meetings');
+        if (data && data.temporarilyRemoved) {
+            data.temporarilyRemoved = [];
+            setPageData('meetings', data);
+        }
     }
 
     if (!getPageData('coordination')) {
@@ -63,7 +73,13 @@ export const initializeAllData = () => {
 export const getAllMeetings = () => {
     const data = getPageData('meetings');
     if (!data) return [];
-    return [...data.originalMeetings, ...data.userMeetings];
+    
+    // Filter out temporarily removed system meetings
+    const activeSystemMeetings = data.originalMeetings.filter(meeting => 
+        !data.temporarilyRemoved || !data.temporarilyRemoved.includes(meeting.id)
+    );
+    
+    return [...activeSystemMeetings, ...data.userMeetings];
 };
 
 export const addMeeting = (meetingData) => {
@@ -109,6 +125,18 @@ export const deleteMeeting = (meetingId) => {
     const data = getPageData('meetings');
     if (!data) return false;
 
+    // Check if it's a system meeting - if so, add to temporarily removed list
+    const systemMeeting = data.originalMeetings.find(m => m.id === meetingId);
+    if (systemMeeting) {
+        if (!data.temporarilyRemoved) {
+            data.temporarilyRemoved = [];
+        }
+        data.temporarilyRemoved.push(meetingId);
+        setPageData('meetings', data);
+        return true;
+    }
+
+    // For user meetings, actually delete them
     const initialLength = data.userMeetings.length;
     data.userMeetings = data.userMeetings.filter(m => m.id !== meetingId);
     
