@@ -8,7 +8,8 @@ import Navbar from './components/navbar.jsx';
 import Home from './pages/Home.jsx';
 import Meetings from './pages/Meetings.jsx';   
 import Coordination from './pages/Coordination.jsx';
-import Login from './pages/Login.jsx';       
+import Login from './pages/Login.jsx';
+import About from './pages/About.jsx';     
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/meetings" element={<Meetings />} />
           <Route path="/coordination" element={<Coordination />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/about" element={<About />} />
         </Routes>
       </main>
     </Router>

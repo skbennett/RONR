@@ -35,9 +35,7 @@ function Navbar() {
         <div className="nav-links desktop-only">
           <Link to="/Meetings">Meetings</Link>
           <Link to="/coordination">Coordination</Link>
-          <a href="https://en.wikipedia.org/wiki/Robert%27s_Rules_of_Order" target="_blank" rel="noopener noreferrer">
-            About
-          </a>
+          <Link to="/about">About</Link>
         </div>
         
         {/* --- Desktop Sign-In Button --- */}
