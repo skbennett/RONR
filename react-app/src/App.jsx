@@ -8,6 +8,7 @@ import Navbar from './components/navbar.jsx';
 import Home from './pages/Home.jsx';
 import Meetings from './pages/Meetings.jsx';   
 import Coordination from './pages/Coordination.jsx';
+import About from './pages/About.jsx';
 import Login from './pages/Login.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
@@ -35,6 +36,7 @@ function App() {
                 <Coordination />
               </ProtectedRoute>
             } />
+            <Route path="/about" element={<About />} />
             <Route path="/login" element={<Login />} />
           </Routes>
         </main>
