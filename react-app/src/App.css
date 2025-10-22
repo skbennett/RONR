@@ -33,16 +33,27 @@ body {
     text-decoration: none;
 }
 
+/* Keep logo/home link the same color even after click */
+.nav-left a,
+.nav-left a:visited {
+    color: inherit;
+}
+
 .nav-links {
     display: flex;
     gap: 24px;
 }
 .nav-links a {
-    color: #fff;
+    color: #2c5530; /* Dark green for better contrast on navbar */
     text-decoration: none;
     font-size: 1em;
+    font-weight: 600;
+}
+.nav-links a:visited {
+    color: #2c5530;
 }
 .nav-links a:hover {
+    color: #1976d2; /* Blue on hover */
     text-decoration: underline;
 }
 .sign-in-btn {
@@ -106,6 +117,9 @@ body {
   font-size: 1.2rem;
   text-align: left;
 }
+.mobile-menu a:visited {
+  color: #333;
+}
 
 .mobile-menu .close-btn {
   background: none;
@@ -119,6 +133,18 @@ body {
 }
 
 .mobile-menu .sign-in-btn-mobile {
+  background-color: #7AAE8C;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+/* Mobile logout button styled like mobile sign-in */
+.mobile-menu .logout-btn-mobile {
   background-color: #7AAE8C;
   color: white;
   border: none;
@@ -640,7 +666,7 @@ body {
     font-size: 0.9em !important;
     padding: 8px 16px !important;
     width: auto !important;
-    margin-top: 0 !important;
+    margin-top: 14px !important; /* Add separation from Create Account */
 }
 
 .back-to-home-btn:hover {

@@ -57,16 +57,8 @@ function Meetings() {
   };
 
   const handleRemoveMeeting = (meetingId, meetingTitle) => {
-    // Only allow deletion of user-created meetings
-    const meeting = meetings.find(m => m.id === meetingId);
-    if (meeting && meeting.createdBy !== 'system') {
-        if (window.confirm(`Are you sure you want to delete "${meetingTitle}"?`)) {
-            deleteMeeting(meetingId);
-            loadMeetings(); // Reload from storage
-        }
-    } else {
-        alert("System-generated meetings cannot be removed.");
-    }
+    deleteMeeting(meetingId);
+    loadMeetings(); // Reload from storage
   };
 
   if (isLoading) {
@@ -99,11 +91,9 @@ function Meetings() {
               >
                 {meeting.joined ? "Joined" : "Join"}
               </button>
-              {meeting.createdBy !== 'system' && (
-                <button className="remove-btn" onClick={() => handleRemoveMeeting(meeting.id, meeting.title)}>
-                  Remove
-                </button>
-              )}
+              <button className="remove-btn" onClick={() => handleRemoveMeeting(meeting.id, meeting.title)}>
+                Remove
+              </button>
             </div>
           </div>
         ))}
