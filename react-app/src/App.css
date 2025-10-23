@@ -56,19 +56,22 @@ body {
     color: #1976d2; /* Blue on hover */
     text-decoration: underline;
 }
-.sign-in-btn {
-    background-color: #fff;
-    color: #7AAE8C;
+/* Updated sign-in and logout button styles */
+.sign-in-btn, .logout-btn {
+    background-color: #7AAE8C;
+    color: white;
     border: none;
     padding: 8px 20px;
     border-radius: 4px;
     font-weight: bold;
     cursor: pointer;
     font-size: 1em;
-    transition: background 0.2s;
+    transition: all 0.3s ease;
 }
-.sign-in-btn:hover {
-    background-color: #e6f2ea;
+
+.sign-in-btn:hover, .logout-btn:hover {
+    background-color: #5a8c6a;
+    transform: translateY(-1px);
 }
 
 /* By default (on desktop), hide mobile-only elements */
@@ -132,27 +135,24 @@ body {
   margin-bottom: 10px;
 }
 
-.mobile-menu .sign-in-btn-mobile {
-  background-color: #7AAE8C;
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: center;
-  font-size: 1.1rem;
+/* Updated mobile button styles */
+.mobile-menu .sign-in-btn-mobile,
+.mobile-menu .logout-btn-mobile {
+    background-color: #7AAE8C;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
 }
 
-/* Mobile logout button styled like mobile sign-in */
-.mobile-menu .logout-btn-mobile {
-  background-color: #7AAE8C;
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: center;
-  font-size: 1.1rem;
+.mobile-menu .sign-in-btn-mobile:hover,
+.mobile-menu .logout-btn-mobile:hover {
+    background-color: #5a8c6a;
+    transform: translateY(-1px);
 }
 
 .add-meeting-form {
