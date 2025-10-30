@@ -64,6 +64,7 @@ export const initializeAllData = () => {
             votingHistory: [],
             currentSession: null,
             nextMotionId: 1,
+            postponedStack: [],
         });
     }
 };
@@ -244,4 +245,149 @@ export const finalizeVoteLockOnCoordinationMotion = (motionId, username) => {
         motion.voters.push(username);
     }
     return setPageData('coordination', data);
+};
+
+// --- Sub-motion & Postpone/Resume ---
+export const addCoordinationSubMotion = ({ parentId, title, description, sessionId }) => {
+    const data = getPageData('coordination');
+    if (!data) return null;
+    const id = data.nextMotionId++;
+    const motion = {
+        id,
+        parentId: parentId || null,
+        title,
+        description,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        createdBy: getCurrentUser(),
+        sessionId,
+        votes: { for: 0, against: 0, abstain: 0 },
+        voters: [],
+    };
+    data.activeMotions.unshift(motion);
+    // Add child reference on parent for convenience
+    if (parentId) {
+        const parent = data.activeMotions.find(m => m.id === parentId);
+        if (parent) {
+            parent.submotions = parent.submotions || [];
+            parent.submotions.push(id);
+        }
+    }
+    setPageData('coordination', data);
+    return motion;
+};
+
+export const postponeCoordinationMotion = (motionId) => {
+    const data = getPageData('coordination');
+    if (!data) return false;
+    const motion = data.activeMotions.find(m => m.id === motionId);
+    if (!motion) return false;
+    motion.status = 'postponed';
+    data.postponedStack = data.postponedStack || [];
+    // push onto stack
+    data.postponedStack.push(motionId);
+    return setPageData('coordination', data);
+};
+
+export const resumeLastPostponedCoordinationMotion = () => {
+    const data = getPageData('coordination');
+    if (!data) return null;
+    data.postponedStack = data.postponedStack || [];
+    const last = data.postponedStack.pop();
+    if (!last) return null;
+    const motion = data.activeMotions.find(m => m.id === last);
+    if (!motion) return null;
+    // resume directly into voting so it becomes active immediately
+    motion.status = 'voting';
+    motion.votingStartTime = new Date().toISOString();
+    setPageData('coordination', data);
+    return motion;
+};
+
+export const resumeSpecificPostponedCoordinationMotion = (motionId) => {
+    const data = getPageData('coordination');
+    if (!data) return null;
+    data.postponedStack = data.postponedStack || [];
+    const idx = data.postponedStack.lastIndexOf(motionId);
+    if (idx === -1) return null;
+    // remove that specific entry from the stack
+    data.postponedStack.splice(idx, 1);
+    const motion = data.activeMotions.find(m => m.id === motionId);
+    if (!motion) return null;
+    // Resume directly into voting so the motion becomes active immediately
+    motion.status = 'voting';
+    motion.votingStartTime = new Date().toISOString();
+    setPageData('coordination', data);
+    return motion;
+};
+
+export const endCoordinationMotion = (motionId) => {
+    const data = getPageData('coordination');
+    if (!data) return null;
+    data.activeMotions = data.activeMotions || [];
+    const idx = data.activeMotions.findIndex(m => m.id === motionId);
+    if (idx === -1) return null;
+    // remove the main motion
+    const [main] = data.activeMotions.splice(idx, 1);
+    if (!main) return null;
+    // Determine outcome for the main motion
+    const forVotes = (main.votes && main.votes.for) || 0;
+    const againstVotes = (main.votes && main.votes.against) || 0;
+    let outcome = null;
+    if (forVotes > againstVotes) outcome = 'passed';
+    else if (againstVotes > forVotes) outcome = 'failed';
+    main.status = outcome || main.status || 'completed';
+    main.endTime = new Date().toISOString();
+
+    // Collect descendants (recursive) and remove them from activeMotions
+    const toArchive = [main];
+    const queue = [main.id];
+    while (queue.length) {
+        const pid = queue.shift();
+        // find immediate children
+        const children = data.activeMotions.filter(m => m.parentId === pid);
+        for (const child of children) {
+            const cidx = data.activeMotions.findIndex(m => m.id === child.id);
+            if (cidx !== -1) {
+                const [removed] = data.activeMotions.splice(cidx, 1);
+                queue.push(removed.id);
+                // determine archival status for descendant
+                const totalVotes = ((removed.votes && removed.votes.for) || 0) + ((removed.votes && removed.votes.against) || 0) + ((removed.votes && removed.votes.abstain) || 0);
+                removed.status = totalVotes > 0 ? 'expired' : 'n/a';
+                removed.endTime = new Date().toISOString();
+                // finalize any pending userVotes into voters for archive
+                removed.voters = removed.voters || [];
+                if (removed.userVotes) {
+                    Object.keys(removed.userVotes).forEach(u => {
+                        if (!removed.voters.includes(u)) removed.voters.push(u);
+                    });
+                    // once finalized, we can leave userVotes as-is or remove; keep for audit
+                }
+                // remove any references from postponedStack
+                if (data.postponedStack) {
+                    data.postponedStack = data.postponedStack.filter(id => id !== removed.id);
+                }
+                toArchive.push(removed);
+            }
+        }
+    }
+    // finalize main's pending votes into voters as well
+    main.voters = main.voters || [];
+    if (main.userVotes) {
+        Object.keys(main.userVotes).forEach(u => {
+            if (!main.voters.includes(u)) main.voters.push(u);
+        });
+    }
+    if (data.postponedStack) {
+        data.postponedStack = data.postponedStack.filter(id => id !== main.id);
+    }
+    // Persist archived items (most recent first)
+    data.votingHistory = data.votingHistory || [];
+    // unshift so main appears first followed by its descendants
+    for (const item of toArchive) {
+        data.votingHistory.unshift(item);
+    }
+
+    setPageData('coordination', data);
+    return main;
 };
