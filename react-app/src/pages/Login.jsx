@@ -66,18 +66,7 @@ function Login() {
   };
 
   const handleCreateAccount = () => {
-    if (!username || !password) {
-      alert('Please fill out both username and password fields to create an account.');
-      return;
-    }
-    if (authManager.addUser(username, password)) {
-      alert('Account created successfully! You can now log in.');
-      // Clear fields
-      setUsername('');
-      setPassword('');
-    } else {
-      alert('This username is already taken. Please choose another.');
-    }
+    navigate('/create-account');
   };
 
 

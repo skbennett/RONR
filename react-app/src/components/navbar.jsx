@@ -50,7 +50,7 @@ function Navbar() {
         {isAuthenticated ? (
           <div className="user-info desktop-only">
             <button className="logout-btn" onClick={handleLogout}>
-              Sign Out (Admin)
+              {`Sign Out (${user || 'Admin'})`}
             </button>
           </div>
         ) : (
@@ -78,7 +78,7 @@ function Navbar() {
         {isAuthenticated ? (
           <div className="mobile-user-info">
             <button className="logout-btn-mobile" onClick={handleLogout}>
-              Sign Out (Admin)
+              {`Sign Out (${user || 'Admin'})`}
             </button>
           </div>
         ) : (
