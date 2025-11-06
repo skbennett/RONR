@@ -17,6 +17,7 @@ import {
   endCoordinationMotion,
   undoVoteOnCoordinationMotion
 } from '../services/dataManager';
+import './Coordination.css';
 
 // --- Helper Components (for better organization) ---
 
@@ -29,14 +30,13 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
   const userVote = motion.userVotes ? motion.userVotes[currentUser] : undefined;
   const hasVoted = Boolean(userVote);
   const canUndo = isUndoAllowed ? isUndoAllowed(motion, currentUser) : hasVoted;
-
   return (
-  <div className="motion-card" style={{ padding: 16, background: '#fff', borderRadius: 6, boxShadow: '0 0 0 1px rgba(0,0,0,0.04) inset' }}>
-      <div className="motion-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="motion-card">
+      <div className="motion-header">
+        <div className="motion-header-left">
           <div className="motion-title">{motion.title}</div>
           {motion.special && (
-            <div style={{ background: '#f2f2f2', color: '#333', padding: '4px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: '1px solid #e0e0e0' }}>Special Motion</div>
+            <div className="special-badge">Special Motion</div>
           )}
         </div>
         <div className={`motion-status ${motion.status}`}>{motion.status}</div>
@@ -151,8 +151,19 @@ function Coordination() {
 
   // --- Edit helpers ---
   const showEditForm = (id, motion) => {
-    setEditFormVisible(prev => ({ ...prev, [id]: true }));
-    setEditFormValues(prev => ({ ...prev, [id]: { title: motion.title || '', description: motion.description || '', special: !!motion.special } }));
+    // Toggle the edit form for a motion: open with values if closed, close and clear values if open
+    setEditFormVisible(prev => ({ ...prev, [id]: !prev[id] }));
+    setEditFormValues(prev => {
+      const copy = { ...prev };
+      if (prev[id]) {
+        // currently open -> close: remove stored values
+        delete copy[id];
+      } else {
+        // currently closed -> open: populate defaults from motion
+        copy[id] = { title: motion.title || '', description: motion.description || '', special: !!motion.special };
+      }
+      return copy;
+    });
   };
   const cancelEditForm = (id) => {
     setEditFormVisible(prev => ({ ...prev, [id]: false }));
@@ -176,9 +187,19 @@ function Coordination() {
 
   // --- Reply helpers ---
   const showReplyForm = (id) => {
-    setReplyFormVisible(prev => ({ ...prev, [id]: true }));
-    // ensure default values include neutral stance so the submit path doesn't require an extra selection
-    setReplyFormValues(prev => ({ ...prev, [id]: { ...(prev[id] || {}), stance: (prev[id] && prev[id].stance) || 'neutral', text: (prev[id] && prev[id].text) || '' } }));
+    // Toggle reply form: open with defaults if closed, close and clear values if open
+    setReplyFormVisible(prev => ({ ...prev, [id]: !prev[id] }));
+    setReplyFormValues(prev => {
+      const copy = { ...prev };
+      if (prev[id]) {
+        // was open -> now closing: remove draft
+        delete copy[id];
+      } else {
+        // was closed -> now opening: populate defaults
+        copy[id] = { ...(prev[id] || {}), stance: (prev[id] && prev[id].stance) || 'neutral', text: (prev[id] && prev[id].text) || '' };
+      }
+      return copy;
+    });
   };
   const cancelReplyForm = (id) => {
     setReplyFormVisible(prev => ({ ...prev, [id]: false }));
@@ -307,6 +328,11 @@ function Coordination() {
       // clear session pointer
       updateCoordinationData({ currentSession: null });
       setCurrentSession(null);
+      // close and reset the 'Propose a New Motion' form so UI is clean after ending session
+      setIsFormVisible(false);
+      setMotionTitle('');
+      setMotionDescription('');
+      setMotionSpecial(false);
     }
   };
 
@@ -437,8 +463,10 @@ function Coordination() {
          <section className="motion-form" style={{display: 'block'}}>
             <h3>Propose a New Motion</h3>
             <form onSubmit={handleSubmitMotion}>
-              <input type="text" placeholder="Motion Title" value={motionTitle} onChange={e => setMotionTitle(e.target.value)} />
-              <textarea placeholder="Description (optional)" rows="3" value={motionDescription} onChange={e => setMotionDescription(e.target.value)}></textarea>
+              <div className="field-pair">
+                <input className="form-input" type="text" placeholder="Motion Title" value={motionTitle} onChange={e => setMotionTitle(e.target.value)} />
+                <textarea className="form-textarea" placeholder="Description (optional)" rows="3" value={motionDescription} onChange={e => setMotionDescription(e.target.value)}></textarea>
+              </div>
                 <div className="form-buttons" style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: 8 }}>
                 <button type="submit" className="primary-btn">Submit Motion</button>
                 <button type="button" className="secondary-btn" onClick={() => { setIsFormVisible(false); setMotionTitle(''); setMotionDescription(''); setMotionSpecial(false); }}>Cancel</button>
@@ -518,8 +546,11 @@ function Coordination() {
                   </div>
                   {editFormVisible[motion.id] && (
                     <div style={{ marginTop: 8 }}>
-                      <input type="text" placeholder="Title" value={editFormValues[motion.id]?.title || ''} onChange={e => handleEditInputChange(motion.id, 'title', e.target.value)} style={{ width: '100%', fontSize: 16, padding: '8px 10px', boxSizing: 'border-box' }} />
-                      <textarea placeholder="Description (optional)" rows={3} value={editFormValues[motion.id]?.description || ''} onChange={e => handleEditInputChange(motion.id, 'description', e.target.value)} style={{ display: 'block', marginTop: 8, width: '100%', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box' }} />
+                      <div className="edit-header"><span className="editing-label">Editing:</span></div>
+                      <div className="field-pair">
+                        <input className="form-input" type="text" placeholder="Title" value={editFormValues[motion.id]?.title || ''} onChange={e => handleEditInputChange(motion.id, 'title', e.target.value)} />
+                        <textarea className="form-textarea" placeholder="Description (optional)" rows={3} value={editFormValues[motion.id]?.description || ''} onChange={e => handleEditInputChange(motion.id, 'description', e.target.value)} />
+                      </div>
                       <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
                         <button className="primary-btn" onClick={() => handleSubmitEdit(motion.id)}>Save</button>
                         <button className="secondary-btn" onClick={() => cancelEditForm(motion.id)}>Cancel</button>
@@ -532,8 +563,10 @@ function Coordination() {
                   )}
                   {subFormVisible[motion.id] && (
                     <div style={{ marginTop: 8 }}>
-                      <input type="text" placeholder="Sub-motion title" value={subFormValues[motion.id]?.title || ''} onChange={e => handleSubInputChange(motion.id, 'title', e.target.value)} style={{ width: '100%', fontSize: 16, padding: '8px 10px', boxSizing: 'border-box' }} />
-                      <textarea placeholder="Description (optional)" rows={4} value={subFormValues[motion.id]?.description || ''} onChange={e => handleSubInputChange(motion.id, 'description', e.target.value)} style={{ display: 'block', marginTop: 8, width: '100%', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box' }} />
+                      <div className="field-pair">
+                        <input className="form-input" type="text" placeholder="Sub-motion title" value={subFormValues[motion.id]?.title || ''} onChange={e => handleSubInputChange(motion.id, 'title', e.target.value)} />
+                        <textarea className="form-textarea" placeholder="Description (optional)" rows={4} value={subFormValues[motion.id]?.description || ''} onChange={e => handleSubInputChange(motion.id, 'description', e.target.value)} />
+                      </div>
                       <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
                         <button className="primary-btn" onClick={() => handleSubmitSubMotion(motion.id)}>Submit Sub-Motion</button>
                         <button className="secondary-btn" onClick={() => cancelSubForm(motion.id)}>Cancel</button>
@@ -545,11 +578,11 @@ function Coordination() {
                     </div>
                   )}
                   {/* Replies / Discussion (hidden when motion is postponed) */}
-                  {motion.status !== 'postponed' && (
+                    {motion.status !== 'postponed' && (
                   (!motion.special) ? (
                   <div className="motion-replies" style={{ marginTop: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <strong>Discussion</strong>
+                      <strong className="discussion-title">Discussion</strong>
                       <button className="secondary-btn" onClick={() => showReplyForm(motion.id)} style={{ marginLeft: 'auto' }}>Reply</button>
                     </div>
                     {motion.replies && motion.replies.length > 0 ? (
@@ -573,9 +606,9 @@ function Coordination() {
                     )}
                     {replyFormVisible[motion.id] && (
                       <div style={{ marginTop: 8 }}>
-                        <textarea rows={3} placeholder="Write your reply..." value={replyFormValues[motion.id]?.text || ''} onChange={e => handleReplyInputChange(motion.id, 'text', e.target.value)} style={{ width: '100%', boxSizing: 'border-box' }} />
-                        <div style={{ marginTop: 6 }}>
-                          <label style={{ marginRight: 8 }}>Stance:</label>
+                        <textarea className="form-textarea" rows={3} placeholder="Write your reply..." value={replyFormValues[motion.id]?.text || ''} onChange={e => handleReplyInputChange(motion.id, 'text', e.target.value)} />
+                        <div className="reply-controls">
+                          <label className="reply-label">Stance:</label>
                           <select value={replyFormValues[motion.id]?.stance || 'neutral'} onChange={e => handleReplyInputChange(motion.id, 'stance', e.target.value)}>
                             <option value="pro">Pro</option>
                             <option value="con">Con</option>
