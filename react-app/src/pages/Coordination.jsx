@@ -35,11 +35,13 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
       <div className="motion-header">
         <div className="motion-header-left">
           <div className="motion-title">{motion.title}</div>
-          {motion.special && (
-            <div className="special-badge">Special Motion</div>
-          )}
         </div>
-        <div className={`motion-status ${motion.status}`}>{motion.status}</div>
+        <div className="motion-actions">
+          {motion.special && (
+            <div className="special-badge header-badge">Special Motion</div>
+          )}
+          <div className={`motion-status ${motion.status}`}>{motion.status}</div>
+        </div>
       </div>
       {motion.description && <div className="motion-description">{motion.description}</div>}
       <div className="motion-meta">
@@ -649,18 +651,18 @@ function Coordination() {
         {votingHistory.length > 0 ? (
           votingHistory.map(item => (
             <div key={item.id} className="history-item">
-              <div className="history-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div className="history-title">{item.title}</div>
-                  {item.special && (
-                    <div style={{ background: '#f2f2f2', color: '#333', padding: '4px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: '1px solid #e0e0e0' }}>Special Motion</div>
-                  )}
-                </div>
-                <div className="history-actions">
-                  <div className={`history-result ${item.status}`}>{item.status}</div>
-                  <button className="delete-history-btn" title="Delete this item" onClick={() => handleDeleteHistory(item.id)}>×</button>
-                </div>
-              </div>
+              <div className="history-header">
+                    <div className="history-left">
+                      <div className="history-title">{item.title}</div>
+                    </div>
+                    <div className="history-actions">
+                      {item.special && (
+                        <div className="special-badge history-badge">Special Motion</div>
+                      )}
+                      <div className={`history-result ${item.status}`}>{item.status}</div>
+                      <button className="delete-history-btn" title="Delete this item" onClick={() => handleDeleteHistory(item.id)}>×</button>
+                    </div>
+                  </div>
               <div className="history-votes">
                 For: {item.votes.for} | Against: {item.votes.against} | Abstain: {item.votes.abstain}
               </div>

@@ -6,6 +6,7 @@
   --accent-2: #0ea5a4;
   --danger: #ef4444;
   --glass: rgba(15, 23, 42, 0.04);
+  --container-max: 1200px;
 }
 
 /* Page layout */
@@ -15,6 +16,8 @@
   color: #0f172a;
   background: var(--bg);
   padding: 20px;
+  max-width: var(--container-max);
+  margin: 0 auto; /* center the page */
   min-height: 100vh;
 }
 
@@ -33,6 +36,17 @@
   border-radius: 10px;
   box-shadow: 0 6px 18px rgba(12, 20, 32, 0.06);
   border: 1px solid var(--glass);
+  /* smooth hover/raise effect */
+  transition: transform 160ms ease, box-shadow 160ms ease,
+    border-color 160ms ease;
+  will-change: transform, box-shadow;
+}
+
+/* Slight raise and deeper shadow on hover for better affordance */
+.motion-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 14px 30px rgba(12, 20, 32, 0.12);
+  border-color: rgba(15, 23, 42, 0.08);
 }
 
 .motion-header {
@@ -43,13 +57,25 @@
 }
 .motion-header-left {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  min-width: 0; /* allow shrinking so title can wrap without overlapping actions */
+  flex: 1 1 auto;
 }
 .motion-title {
   font-weight: 700;
   font-size: 16px;
   color: #0b1220;
+  white-space: normal; /* allow wrapping */
+  word-break: break-word;
+  line-height: 1.2;
+  margin: 0;
+}
+.motion-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0; /* keep badges and status from shrinking */
 }
 .special-badge {
   background: #f2f4f7;
@@ -59,6 +85,13 @@
   font-size: 12px;
   font-weight: 600;
   border: 1px solid #e6edf3;
+}
+
+/* Slightly smaller variant when used in the motion header action area */
+.header-badge {
+  padding: 4px 8px;
+  font-size: 12px;
+  margin-right: 6px;
 }
 .motion-status {
   text-transform: capitalize;
@@ -232,14 +265,49 @@
   border: 1px solid var(--glass);
   margin-bottom: 10px;
   box-shadow: 0 6px 14px rgba(12, 20, 32, 0.04);
+  /* smooth hover/raise effect to match motion cards */
+  transition: transform 160ms ease, box-shadow 160ms ease,
+    border-color 160ms ease;
+  will-change: transform, box-shadow;
 }
 .history-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 .history-title {
   font-weight: 700;
+}
+.history-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0; /* allow shrinking for overflow handling */
+  flex: 1 1 auto;
+}
+/* Allow the title to wrap onto subsequent lines but keep it confined to the
+   left area reserved by the flex layout so it never intrudes into the action
+   badges on the right. */
+.history-title {
+  font-weight: 700;
+  display: block;
+  word-break: break-word;
+  white-space: normal; /* allow wrapping */
+  line-height: 1.2;
+  margin: 0; /* reset if any inline default margins appear */
+}
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0; /* keep action badges from shrinking */
+}
+/* Slightly smaller special badge for history and spacing */
+.history-badge {
+  padding: 4px 8px;
+  font-size: 12px;
+  margin-right: 6px;
 }
 .history-actions {
   display: flex;
@@ -272,6 +340,13 @@
   font-size: 18px;
   cursor: pointer;
   color: var(--muted);
+}
+
+/* Slight raise and deeper shadow on hover for history cards */
+.history-item:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 14px 30px rgba(12, 20, 32, 0.12);
+  border-color: rgba(15, 23, 42, 0.08);
 }
 
 /* Small utilities */
