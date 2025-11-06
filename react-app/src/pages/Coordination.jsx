@@ -14,7 +14,6 @@ import {
   resumeSpecificPostponedCoordinationMotion,
   endCoordinationMotion,
   undoVoteOnCoordinationMotion
-  , finalizeVoteLockOnCoordinationMotion
 } from '../services/dataManager';
 
 // --- Helper Components (for better organization) ---
@@ -79,15 +78,7 @@ function Coordination() {
   const [motionDescription, setMotionDescription] = useState('');
   const { user } = useAuth();
   const currentUser = user || 'guest';
-  // How long after casting a vote before the vote is finalized/locked (ms)
-  const VOTE_LOCK_DELAY_MS = 5000; // 5 seconds
-  // How long after outcome before the motion is archived into history (ms)
-  // Keep this >= VOTE_LOCK_DELAY_MS so users have time to undo before archive
-  const ARCHIVE_DELAY_MS = 5000; // 5 seconds
-  // Keep track of scheduled lock timers so we can cancel them if user undoes their vote
-  const lockTimersRef = useRef({});
-  // Keep client-side lock deadlines so UI can allow undo during grace period even if storage lags
-  const lockDeadlinesRef = useRef({});
+  // No client-side lock timers: votes finalize immediately server-side.
   // Inline sub-motion form state (mapping motionId -> visible)
   const [subFormVisible, setSubFormVisible] = useState({});
   const [subFormValues, setSubFormValues] = useState({});
@@ -125,8 +116,8 @@ function Coordination() {
     if (!vals.title || vals.title.trim() === '') { alert('Please enter a sub-motion title.'); return; }
     const sub = addCoordinationSubMotion({ parentId, title: vals.title.trim(), description: (vals.description || '').trim(), sessionId: currentSession?.id });
     if (sub) {
-      // start voting quickly
-      setTimeout(() => { startVotingForMotion(sub.id); refreshFromStorage(); }, 200);
+      // start voting immediately
+      startVotingForMotion(sub.id);
       cancelSubForm(parentId);
       refreshFromStorage();
     } else {
@@ -153,25 +144,7 @@ function Coordination() {
       const username = currentUser;
       const data = getCoordinationData() || {};
       const motion = (data.activeMotions || []).find(m => m.id === resumed.id);
-      if (motion && motion.userVotes && motion.userVotes[username]) {
-        try {
-          const lockKey = `${resumed.id}::${username}`;
-          // clear any existing timer
-          if (lockTimersRef.current[lockKey]) {
-            clearTimeout(lockTimersRef.current[lockKey]);
-          }
-          lockDeadlinesRef.current[lockKey] = Date.now() + VOTE_LOCK_DELAY_MS;
-          lockTimersRef.current[lockKey] = setTimeout(() => {
-            finalizeVoteLockOnCoordinationMotion(resumed.id, username);
-            const refreshedAfterLock = getCoordinationData();
-            setActiveMotions(refreshedAfterLock?.activeMotions || []);
-            delete lockTimersRef.current[lockKey];
-            delete lockDeadlinesRef.current[lockKey];
-          }, VOTE_LOCK_DELAY_MS);
-        } catch (e) {
-          console.error('Error scheduling resume vote lock:', e);
-        }
-      }
+      // Votes finalize immediately in dataManager; just refresh UI
       alert(`Resumed motion: ${resumed.title}`);
       refreshFromStorage();
     } else {
@@ -188,24 +161,7 @@ function Coordination() {
       const username = currentUser;
       const data = getCoordinationData() || {};
       const motion = (data.activeMotions || []).find(m => m.id === resumed.id);
-      if (motion && motion.userVotes && motion.userVotes[username]) {
-        try {
-          const lockKey = `${resumed.id}::${username}`;
-          if (lockTimersRef.current[lockKey]) {
-            clearTimeout(lockTimersRef.current[lockKey]);
-          }
-          lockDeadlinesRef.current[lockKey] = Date.now() + VOTE_LOCK_DELAY_MS;
-          lockTimersRef.current[lockKey] = setTimeout(() => {
-            finalizeVoteLockOnCoordinationMotion(resumed.id, username);
-            const refreshedAfterLock = getCoordinationData();
-            setActiveMotions(refreshedAfterLock?.activeMotions || []);
-            delete lockTimersRef.current[lockKey];
-            delete lockDeadlinesRef.current[lockKey];
-          }, VOTE_LOCK_DELAY_MS);
-        } catch (e) {
-          console.error('Error scheduling resume vote lock:', e);
-        }
-      }
+      // Votes finalize immediately in dataManager; just refresh UI
       alert(`Resumed motion: ${resumed.title}`);
       refreshFromStorage();
     } else {
@@ -220,19 +176,7 @@ function Coordination() {
       alert('Failed to end motion.');
       return;
     }
-    // Clear any pending lock timers related to this motion for all users
-    Object.keys(lockTimersRef.current).forEach(k => {
-      if (k.startsWith(`${motionId}::`)) {
-        clearTimeout(lockTimersRef.current[k]);
-        delete lockTimersRef.current[k];
-      }
-    });
-    // Clear any client-side deadlines for this motion
-    Object.keys(lockDeadlinesRef.current).forEach(k => {
-      if (k.startsWith(`${motionId}::`)) {
-        delete lockDeadlinesRef.current[k];
-      }
-    });
+    // No client-side timers to clear; refresh UI from storage
     refreshFromStorage();
   };
 
@@ -248,23 +192,21 @@ function Coordination() {
 
   const handleEndSession = () => {
     if (window.confirm('Are you sure you want to end the current session? Active motions will be archived.')) {
+      // End each active motion using the canonical end function so outcomes
+      // are computed consistently (2/3 rule) and archived into history.
       const data = getCoordinationData() || {};
-      const active = (data.activeMotions || []).map(m => m.status === 'voting' ? { ...m, status: 'expired', endTime: new Date().toISOString() } : m);
-      const toArchive = active.filter(m => m.status !== 'pending');
-      // Merge stored votingHistory with new archived items, avoiding duplicates (by id)
-      const existing = data.votingHistory || [];
-      const merged = [
-        ...existing,
-        ...toArchive.filter(a => !existing.some(e => e.id === a.id))
-      ];
-      updateCoordinationData({
-        currentSession: null,
-        votingHistory: merged,
-        activeMotions: []
+      const ids = (data.activeMotions || []).map(m => m.id);
+      ids.forEach(id => {
+        try {
+          endCoordinationMotion(id);
+        } catch (e) {
+          console.error('Error ending motion', id, e);
+        }
       });
-      // Update UI from persisted/merged history to avoid reintroducing deleted items
-      setVotingHistory(merged);
-      setActiveMotions([]);
+      // Refresh from storage to pick up archived history and cleared active motions
+      refreshFromStorage();
+      // clear session pointer
+      updateCoordinationData({ currentSession: null });
       setCurrentSession(null);
     }
   };
@@ -281,11 +223,10 @@ function Coordination() {
     }
     const motion = addCoordinationMotion({ title: motionTitle, description: motionDescription, sessionId: currentSession.id });
     setActiveMotions(prev => [motion, ...prev]);
-    setTimeout(() => {
-      startVotingForMotion(motion.id);
-      const refreshed = getCoordinationData();
-      setActiveMotions(refreshed?.activeMotions || []);
-    }, 5000);
+    // Start voting immediately for the new motion and refresh UI
+    startVotingForMotion(motion.id);
+    const refreshed = getCoordinationData();
+    setActiveMotions(refreshed?.activeMotions || []);
     // Reset form
     setMotionTitle('');
     setMotionDescription('');
@@ -311,26 +252,7 @@ function Coordination() {
     const data = getCoordinationData();
     setActiveMotions(data?.activeMotions || []);
 
-    // Schedule automatic finalize/lock for this user's vote after VOTE_LOCK_DELAY_MS
-    try {
-      const lockKey = `${motionId}::${username}`;
-      if (lockTimersRef.current[lockKey]) {
-        clearTimeout(lockTimersRef.current[lockKey]);
-      }
-      // set client-side deadline
-      lockDeadlinesRef.current[lockKey] = Date.now() + VOTE_LOCK_DELAY_MS;
-      lockTimersRef.current[lockKey] = setTimeout(() => {
-        finalizeVoteLockOnCoordinationMotion(motionId, username);
-        const refreshedAfterLock = getCoordinationData();
-        setActiveMotions(refreshedAfterLock?.activeMotions || []);
-        // remove timer entry
-        delete lockTimersRef.current[lockKey];
-        delete lockDeadlinesRef.current[lockKey];
-      }, VOTE_LOCK_DELAY_MS);
-    } catch (e) {
-      // ignore scheduling errors
-      console.error('Error scheduling vote lock:', e);
-    }
+    // Votes are finalized immediately in dataManager; no client-side lock timer.
   };
 
   const handleUndoVote = () => {
@@ -346,22 +268,9 @@ function Coordination() {
       console.warn('undoVoteOnCoordinationMotion returned false for', motionId, username);
       return;
     }
-    // Cancel any scheduled lock for this user's vote
-    try {
-      const lockKey = `${motionId}::${username}`;
-      if (lockTimersRef.current[lockKey]) {
-        clearTimeout(lockTimersRef.current[lockKey]);
-        delete lockTimersRef.current[lockKey];
-      }
-      // also clear client-side deadline
-      if (lockDeadlinesRef.current[lockKey]) {
-        delete lockDeadlinesRef.current[lockKey];
-      }
-    } catch (e) {
-      console.error('Error cancelling vote lock timer:', e);
-    }
-  const data = getCoordinationData();
-  setActiveMotions(data?.activeMotions || []);
+    // Refresh UI from storage after undo
+    const data = getCoordinationData();
+    setActiveMotions(data?.activeMotions || []);
     // update UI vote counts for the specific motion if present
     const motion = (data?.activeMotions || []).find(m => m.id === motionId);
     if (motion) {
@@ -389,16 +298,10 @@ function Coordination() {
   // Determine if undo is allowed for a given motion and username during the grace period
   const isUndoAllowed = (motion, username) => {
     if (!motion || !username) return false;
-    const hasUserVote = motion.userVotes && motion.userVotes[username];
-    if (!hasUserVote) return false;
-    // If the vote is finalized in storage, disallow
-    if (motion.voters && motion.voters.includes(username)) return false;
-    // If a client-side deadline exists and is still in the future, allow undo
-    const lockKey = `${motion.id}::${username}`;
-    const deadline = lockDeadlinesRef.current[lockKey];
-    if (deadline && Date.now() < deadline) return true;
-    // otherwise allow undo if no deadline (fallback) and not locked
-    return !deadline;
+    // Allow undo when a pending user vote exists. Votes finalize immediately
+    // in the data layer, but `userVotes` is kept for audit — presence signals
+    // that an undo/retract is possible.
+    return Boolean(motion.userVotes && motion.userVotes[username]);
   };
 
   return (
@@ -469,10 +372,17 @@ function Coordination() {
                     ) : (
                       <>
                         <button className="secondary-btn" onClick={() => showSubForm(motion.id)}>Start Sub-Motion</button>
-                        {/* show undo button on card row if allowed (helps the main/card-level visibility) */}
-                        {isUndoAllowed(motion, currentUser) && (
-                          <button className="secondary-btn" onClick={() => handleUndoVoteFunctional(motion.id, currentUser)} style={{ marginLeft: 8 }}>Undo Vote</button>
-                        )}
+                        {/* Always show the undo button so the affordance doesn't disappear when other actions (like creating sub-motions) occur.
+                            The button is disabled when undo isn't currently allowed. */}
+                        <button
+                          className="secondary-btn"
+                          onClick={() => handleUndoVoteFunctional(motion.id, currentUser)}
+                          style={{ marginLeft: 8 }}
+                          disabled={!isUndoAllowed(motion, currentUser)}
+                          title={isUndoAllowed(motion, currentUser) ? 'Undo your pending vote' : 'Undo not available (no pending vote or vote locked)'}
+                        >
+                          Undo Vote
+                        </button>
                         {motion.status === 'voting' && (
                           <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)} style={{ marginLeft: 8 }}>End Motion</button>
                         )}
