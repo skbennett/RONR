@@ -91,6 +91,7 @@ export const initializeAllData = () => {
       votingHistory: [],
       currentSession: null,
       nextMotionId: 1,
+      nextReplyId: 1,
       postponedStack: [],
     });
   }
@@ -188,7 +189,12 @@ export const updateCoordinationData = (updates) => {
   return setPageData("coordination", newData);
 };
 
-export const addCoordinationMotion = ({ title, description, sessionId }) => {
+export const addCoordinationMotion = ({
+  title,
+  description,
+  sessionId,
+  special = false,
+}) => {
   const data = getPageData("coordination");
   if (!data) return null;
   const id = data.nextMotionId++;
@@ -196,16 +202,46 @@ export const addCoordinationMotion = ({ title, description, sessionId }) => {
     id,
     title,
     description,
+    // special: when true, this motion does not allow discussion or replies
+    special: Boolean(special),
     status: "pending",
     createdAt: new Date().toISOString(),
     createdBy: getCurrentUser(),
     sessionId,
     votes: { for: 0, against: 0, abstain: 0 },
     voters: [],
+    replies: [],
   };
   data.activeMotions.unshift(motion);
   setPageData("coordination", data);
   return motion;
+};
+
+// Add a reply to a motion (supports optional parentReplyId for threaded replies)
+export const addCoordinationReply = ({
+  motionId,
+  parentReplyId = null,
+  text,
+  stance,
+}) => {
+  const data = getPageData("coordination");
+  if (!data) return null;
+  const motion = data.activeMotions.find((m) => m.id === motionId);
+  if (!motion) return null;
+  const id = data.nextReplyId++;
+  const reply = {
+    id,
+    motionId,
+    parentReplyId: parentReplyId || null,
+    text: (text || "").trim(),
+    stance: stance || "neutral", // 'pro' | 'con' | 'neutral'
+    createdAt: new Date().toISOString(),
+    createdBy: getCurrentUser(),
+  };
+  motion.replies = motion.replies || [];
+  motion.replies.push(reply);
+  setPageData("coordination", data);
+  return reply;
 };
 
 export const startVotingForMotion = (motionId) => {
@@ -294,6 +330,7 @@ export const addCoordinationSubMotion = ({
   title,
   description,
   sessionId,
+  special = false,
 }) => {
   const data = getPageData("coordination");
   if (!data) return null;
@@ -303,6 +340,7 @@ export const addCoordinationSubMotion = ({
     parentId: parentId || null,
     title,
     description,
+    special: Boolean(special),
     status: "pending",
     createdAt: new Date().toISOString(),
     createdBy: getCurrentUser(),
@@ -328,7 +366,13 @@ export const postponeCoordinationMotion = (motionId) => {
   if (!data) return false;
   const motion = data.activeMotions.find((m) => m.id === motionId);
   if (!motion) return false;
+  // Reset vote state when postponing: clear tallies and any per-user vote locks
   motion.status = "postponed";
+  motion.votes = { for: 0, against: 0, abstain: 0 };
+  motion.userVotes = {};
+  motion.voters = [];
+  // clear voting start time when postponed
+  if (motion.votingStartTime) delete motion.votingStartTime;
   data.postponedStack = data.postponedStack || [];
   // push onto stack
   data.postponedStack.push(motionId);
@@ -363,6 +407,22 @@ export const resumeSpecificPostponedCoordinationMotion = (motionId) => {
   // Resume directly into voting so the motion becomes active immediately
   motion.status = "voting";
   motion.votingStartTime = new Date().toISOString();
+  setPageData("coordination", data);
+  return motion;
+};
+
+export const updateCoordinationMotion = (motionId, updates) => {
+  const data = getPageData("coordination");
+  if (!data) return null;
+  const motion = data.activeMotions.find((m) => m.id === motionId);
+  if (!motion) return null;
+  // Only allow title/description edits via this helper; ignore other fields unless explicitly provided
+  if (updates.title !== undefined) motion.title = updates.title;
+  if (updates.description !== undefined)
+    motion.description = updates.description;
+  if (updates.special !== undefined) motion.special = Boolean(updates.special);
+  motion.updatedAt = new Date().toISOString();
+  motion.updatedBy = getCurrentUser();
   setPageData("coordination", data);
   return motion;
 };

@@ -7,6 +7,8 @@ import {
   updateCoordinationData,
   addCoordinationMotion,
   addCoordinationSubMotion,
+  addCoordinationReply,
+  updateCoordinationMotion,
   startVotingForMotion,
   voteOnCoordinationMotion,
   postponeCoordinationMotion,
@@ -29,9 +31,14 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
   const canUndo = isUndoAllowed ? isUndoAllowed(motion, currentUser) : hasVoted;
 
   return (
-    <div className="motion-card">
-      <div className="motion-header">
-        <div className="motion-title">{motion.title}</div>
+  <div className="motion-card" style={{ padding: 16, background: '#fff', borderRadius: 6, boxShadow: '0 0 0 1px rgba(0,0,0,0.04) inset' }}>
+      <div className="motion-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="motion-title">{motion.title}</div>
+          {motion.special && (
+            <div style={{ background: '#f2f2f2', color: '#333', padding: '4px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: '1px solid #e0e0e0' }}>Special Motion</div>
+          )}
+        </div>
         <div className={`motion-status ${motion.status}`}>{motion.status}</div>
       </div>
       {motion.description && <div className="motion-description">{motion.description}</div>}
@@ -76,12 +83,19 @@ function Coordination() {
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [motionTitle, setMotionTitle] = useState('');
   const [motionDescription, setMotionDescription] = useState('');
+  const [motionSpecial, setMotionSpecial] = useState(false);
   const { user } = useAuth();
   const currentUser = user || 'guest';
   // No client-side lock timers: votes finalize immediately server-side.
   // Inline sub-motion form state (mapping motionId -> visible)
   const [subFormVisible, setSubFormVisible] = useState({});
   const [subFormValues, setSubFormValues] = useState({});
+  // Inline reply form state (mapping motionId -> visible)
+  const [replyFormVisible, setReplyFormVisible] = useState({});
+  const [replyFormValues, setReplyFormValues] = useState({});
+  // Inline edit form for motions
+  const [editFormVisible, setEditFormVisible] = useState({});
+  const [editFormValues, setEditFormValues] = useState({});
   
   // --- DATA INITIALIZATION ---
   useEffect(() => {
@@ -107,6 +121,10 @@ function Coordination() {
     setSubFormVisible(prev => ({ ...prev, [id]: false }));
     setSubFormValues(prev => { const c = { ...prev }; delete c[id]; return c; });
   };
+  const openSubFormWithDefaults = (id) => {
+    setSubFormVisible(prev => ({ ...prev, [id]: true }));
+    setSubFormValues(prev => ({ ...prev, [id]: { ...(prev[id] || {}), title: (prev[id] && prev[id].title) || '', description: (prev[id] && prev[id].description) || '', special: (prev[id] && typeof prev[id].special !== 'undefined') ? prev[id].special : false } }));
+  };
   const handleSubInputChange = (id, field, value) => {
     setSubFormValues(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
   };
@@ -114,10 +132,16 @@ function Coordination() {
   const handleSubmitSubMotion = (parentId) => {
     const vals = subFormValues[parentId] || {};
     if (!vals.title || vals.title.trim() === '') { alert('Please enter a sub-motion title.'); return; }
-    const sub = addCoordinationSubMotion({ parentId, title: vals.title.trim(), description: (vals.description || '').trim(), sessionId: currentSession?.id });
+    const sub = addCoordinationSubMotion({ parentId, title: vals.title.trim(), description: (vals.description || '').trim(), sessionId: currentSession?.id, special: !!vals.special });
     if (sub) {
       // start voting immediately
       startVotingForMotion(sub.id);
+      // postpone the parent so work focuses on the submotion first
+      try {
+        postponeCoordinationMotion(parentId);
+      } catch (e) { console.warn('failed to postpone parent motion', e); }
+      // close discussion area on parent while postponed
+      setReplyFormVisible(prev => ({ ...prev, [parentId]: false }));
       cancelSubForm(parentId);
       refreshFromStorage();
     } else {
@@ -125,9 +149,66 @@ function Coordination() {
     }
   };
 
+  // --- Edit helpers ---
+  const showEditForm = (id, motion) => {
+    setEditFormVisible(prev => ({ ...prev, [id]: true }));
+    setEditFormValues(prev => ({ ...prev, [id]: { title: motion.title || '', description: motion.description || '', special: !!motion.special } }));
+  };
+  const cancelEditForm = (id) => {
+    setEditFormVisible(prev => ({ ...prev, [id]: false }));
+    setEditFormValues(prev => { const c = { ...prev }; delete c[id]; return c; });
+  };
+  const handleEditInputChange = (id, field, value) => {
+    setEditFormValues(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+  };
+
+  const handleSubmitEdit = (motionId) => {
+    const vals = editFormValues[motionId] || {};
+    if (!vals.title || vals.title.trim() === '') { alert('Please enter a title.'); return; }
+    const updated = updateCoordinationMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
+    if (updated) {
+      cancelEditForm(motionId);
+      refreshFromStorage();
+    } else {
+      alert('Failed to update motion.');
+    }
+  };
+
+  // --- Reply helpers ---
+  const showReplyForm = (id) => {
+    setReplyFormVisible(prev => ({ ...prev, [id]: true }));
+    // ensure default values include neutral stance so the submit path doesn't require an extra selection
+    setReplyFormValues(prev => ({ ...prev, [id]: { ...(prev[id] || {}), stance: (prev[id] && prev[id].stance) || 'neutral', text: (prev[id] && prev[id].text) || '' } }));
+  };
+  const cancelReplyForm = (id) => {
+    setReplyFormVisible(prev => ({ ...prev, [id]: false }));
+    setReplyFormValues(prev => { const c = { ...prev }; delete c[id]; return c; });
+  };
+  const handleReplyInputChange = (id, field, value) => {
+    setReplyFormValues(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+  };
+
+  const handleSubmitReply = (motionId) => {
+    const vals = replyFormValues[motionId] || {};
+    if (!vals.text || vals.text.trim() === '') { alert('Please enter reply text.'); return; }
+    // default missing stance to 'neutral' rather than showing a popup
+    const stance = vals.stance || 'neutral';
+    const reply = addCoordinationReply({ motionId, parentReplyId: null, text: vals.text.trim(), stance });
+    if (reply) {
+      cancelReplyForm(motionId);
+      refreshFromStorage();
+      // mark todo complete for this small fix
+      try { window.__todo && window.__todo.markDone && window.__todo.markDone(3); } catch (e) {}
+    } else {
+      alert('Failed to add reply.');
+    }
+  };
+
   const handlePostpone = (motionId) => {
     if (!window.confirm('Postpone decision on this motion? It will be moved to a postponed stack.')) return;
     if (postponeCoordinationMotion(motionId)) {
+      // close discussion area for postponed motion
+      setReplyFormVisible(prev => ({ ...prev, [motionId]: false }));
       // refresh UI without extra popup
       refreshFromStorage();
     } else {
@@ -145,6 +226,8 @@ function Coordination() {
       const data = getCoordinationData() || {};
       const motion = (data.activeMotions || []).find(m => m.id === resumed.id);
       // Votes finalize immediately in dataManager; just refresh UI
+  // keep discussion area closed on resume unless user explicitly opens it
+  setReplyFormVisible(prev => ({ ...prev, [resumed.id]: false }));
       alert(`Resumed motion: ${resumed.title}`);
       refreshFromStorage();
     } else {
@@ -162,6 +245,8 @@ function Coordination() {
       const data = getCoordinationData() || {};
       const motion = (data.activeMotions || []).find(m => m.id === resumed.id);
       // Votes finalize immediately in dataManager; just refresh UI
+  // keep discussion area closed on resume unless user explicitly opens it
+  setReplyFormVisible(prev => ({ ...prev, [resumed.id]: false }));
       alert(`Resumed motion: ${resumed.title}`);
       refreshFromStorage();
     } else {
@@ -177,6 +262,20 @@ function Coordination() {
       return;
     }
     // No client-side timers to clear; refresh UI from storage
+    // If this was a submotion, resume its parent (if it was postponed)
+    if (ended.parentId) {
+      // attempt to resume the parent automatically when the submotion is finished
+      try {
+        const resumedParent = resumeSpecificPostponedCoordinationMotion(ended.parentId);
+        if (resumedParent) {
+          // ensure parent is in voting state and keep discussion closed (user must open it)
+          startVotingForMotion(resumedParent.id);
+          setReplyFormVisible(prev => ({ ...prev, [resumedParent.id]: false }));
+        }
+      } catch (e) {
+        console.warn('failed to resume parent motion after submotion ended', e);
+      }
+    }
     refreshFromStorage();
   };
 
@@ -221,7 +320,7 @@ function Coordination() {
       alert('No active session. Please start a session first.');
       return;
     }
-    const motion = addCoordinationMotion({ title: motionTitle, description: motionDescription, sessionId: currentSession.id });
+    const motion = addCoordinationMotion({ title: motionTitle, description: motionDescription, sessionId: currentSession.id, special: motionSpecial });
     setActiveMotions(prev => [motion, ...prev]);
     // Start voting immediately for the new motion and refresh UI
     startVotingForMotion(motion.id);
@@ -230,6 +329,7 @@ function Coordination() {
     // Reset form
     setMotionTitle('');
     setMotionDescription('');
+    setMotionSpecial(false);
     setIsFormVisible(false);
   };
 
@@ -319,7 +419,7 @@ function Coordination() {
                 <p style={{ fontSize: '12px', color: '#666' }}>Started: {new Date(currentSession.startTime).toLocaleString()}</p>
               </div>
               <div>
-                <button className="primary-btn" onClick={() => setIsFormVisible(true)}>New Motion</button>
+                <button className="primary-btn" onClick={() => { setMotionTitle(''); setMotionDescription(''); setMotionSpecial(false); setIsFormVisible(true); }}>New Motion</button>
                 <button className="secondary-btn" onClick={handleEndSession} style={{marginLeft: '10px'}}>End Session</button>
               </div>
             </>
@@ -339,9 +439,13 @@ function Coordination() {
             <form onSubmit={handleSubmitMotion}>
               <input type="text" placeholder="Motion Title" value={motionTitle} onChange={e => setMotionTitle(e.target.value)} />
               <textarea placeholder="Description (optional)" rows="3" value={motionDescription} onChange={e => setMotionDescription(e.target.value)}></textarea>
-              <div className="form-buttons">
+                <div className="form-buttons" style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: 8 }}>
                 <button type="submit" className="primary-btn">Submit Motion</button>
-                <button type="button" className="secondary-btn" onClick={() => setIsFormVisible(false)}>Cancel</button>
+                <button type="button" className="secondary-btn" onClick={() => { setIsFormVisible(false); setMotionTitle(''); setMotionDescription(''); setMotionSpecial(false); }}>Cancel</button>
+                <label style={{ display: 'inline-flex', alignItems: 'center', fontSize: 13, marginLeft: 6, whiteSpace: 'nowrap', height: '36px' }}>
+                  <input type="checkbox" checked={motionSpecial} onChange={e => setMotionSpecial(e.target.checked)} style={{ marginLeft: 6, marginTop: 0, marginBottom: 0, alignSelf: 'center' }} />
+                  <span style={{ marginLeft: 6, lineHeight: '1', alignSelf: 'center' }}>Special Motion</span>
+                </label>
               </div>
             </form>
          </section>
@@ -358,47 +462,136 @@ function Coordination() {
             const top = activeMotions.filter(m => !m.parentId);
             const renderMotion = (motion, level = 0) => {
               const children = activeMotions.filter(m => m.parentId === motion.id);
+              const hasActiveSubmotions = activeMotions.some(m => m.parentId === motion.id);
               return (
-                <div key={motion.id} style={{ marginLeft: level * 18 }}>
+                <div key={motion.id} style={{ marginLeft: level * 18, marginTop: 12, marginBottom: 24 }}>
                   <MotionCard
                     motion={motion}
                     onVote={handleVote}
                     onUndoVote={handleUndoVoteFunctional}
                     isUndoAllowed={(m, u) => isUndoAllowed(m, u)}
                   />
-                  <div style={{ marginTop: 8 }}>
-                    {motion.status === 'postponed' ? (
-                      <button className="primary-btn" onClick={() => handleResumeSpecific(motion.id)}>Resume</button>
-                    ) : (
-                      <>
-                        <button className="secondary-btn" onClick={() => showSubForm(motion.id)}>Start Sub-Motion</button>
-                        {/* Always show the undo button so the affordance doesn't disappear when other actions (like creating sub-motions) occur.
-                            The button is disabled when undo isn't currently allowed. */}
-                        <button
-                          className="secondary-btn"
-                          onClick={() => handleUndoVoteFunctional(motion.id, currentUser)}
-                          style={{ marginLeft: 8 }}
-                          disabled={!isUndoAllowed(motion, currentUser)}
-                          title={isUndoAllowed(motion, currentUser) ? 'Undo your pending vote' : 'Undo not available (no pending vote or vote locked)'}
-                        >
-                          Undo Vote
-                        </button>
-                        {motion.status === 'voting' && (
-                          <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)} style={{ marginLeft: 8 }}>End Motion</button>
-                        )}
-                        <button className="secondary-btn" onClick={() => handlePostpone(motion.id)} style={{ marginLeft: 8 }}>Postpone Decision</button>
-                      </>
-                    )}
+                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div className="action-group" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {motion.status === 'postponed' ? (
+                        <>
+                          <button
+                            className="primary-btn"
+                            onClick={() => {
+                              if (hasActiveSubmotions) {
+                                alert('Cannot resume this motion while one or more sub-motions are still active. Finish or end them first.');
+                                return;
+                              }
+                              handleResumeSpecific(motion.id);
+                            }}
+                            title={hasActiveSubmotions ? 'Cannot resume while sub-motions are still active. Finish or end them first.' : 'Resume this postponed motion'}
+                          >
+                            Resume
+                          </button>
+                          <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="secondary-btn" onClick={() => showSubForm(motion.id)}>Start Sub-Motion</button>
+                          {/* Always show the undo button so the affordance doesn't disappear when other actions (like creating sub-motions) occur.
+                              The button is disabled when undo isn't currently allowed. */}
+                          <button
+                            className="secondary-btn"
+                            onClick={() => handleUndoVoteFunctional(motion.id, currentUser)}
+                            disabled={!isUndoAllowed(motion, currentUser)}
+                            title={isUndoAllowed(motion, currentUser) ? 'Undo your pending vote' : 'Undo not available (no pending vote or vote locked)'}
+                          >
+                            Undo Vote
+                          </button>
+                          {motion.status === 'voting' && (
+                            <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
+                          )}
+                          <button className="secondary-btn" onClick={() => handlePostpone(motion.id)}>Postpone Decision</button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Edit button visually separated to the right */}
+                    <div className="action-edit" style={{ marginLeft: 12 }}>
+                      <button className="secondary-btn" onClick={() => showEditForm(motion.id, motion)}>Edit</button>
+                    </div>
                   </div>
-                  {subFormVisible[motion.id] && (
+                  {editFormVisible[motion.id] && (
                     <div style={{ marginTop: 8 }}>
-                      <input type="text" placeholder="Sub-motion title" value={subFormValues[motion.id]?.title || ''} onChange={e => handleSubInputChange(motion.id, 'title', e.target.value)} />
-                      <input type="text" placeholder="Description (optional)" value={subFormValues[motion.id]?.description || ''} onChange={e => handleSubInputChange(motion.id, 'description', e.target.value)} style={{ display: 'block', marginTop: 6 }} />
-                      <div style={{ marginTop: 6 }}>
-                        <button className="primary-btn" onClick={() => handleSubmitSubMotion(motion.id)}>Submit Sub-Motion</button>
-                        <button className="secondary-btn" onClick={() => cancelSubForm(motion.id)} style={{ marginLeft: 8 }}>Cancel</button>
+                      <input type="text" placeholder="Title" value={editFormValues[motion.id]?.title || ''} onChange={e => handleEditInputChange(motion.id, 'title', e.target.value)} style={{ width: '100%', fontSize: 16, padding: '8px 10px', boxSizing: 'border-box' }} />
+                      <textarea placeholder="Description (optional)" rows={3} value={editFormValues[motion.id]?.description || ''} onChange={e => handleEditInputChange(motion.id, 'description', e.target.value)} style={{ display: 'block', marginTop: 8, width: '100%', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box' }} />
+                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button className="primary-btn" onClick={() => handleSubmitEdit(motion.id)}>Save</button>
+                        <button className="secondary-btn" onClick={() => cancelEditForm(motion.id)}>Cancel</button>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', fontSize: 13, marginLeft: 6, whiteSpace: 'nowrap', height: '36px' }}>
+                          <input type="checkbox" checked={editFormValues[motion.id]?.special || false} onChange={e => handleEditInputChange(motion.id, 'special', e.target.checked)} style={{ marginLeft: 6, marginTop: 0, marginBottom: 0, alignSelf: 'center' }} />
+                          <span style={{ marginLeft: 6, lineHeight: '1', alignSelf: 'center' }}>Special Motion</span>
+                        </label>
                       </div>
                     </div>
+                  )}
+                  {subFormVisible[motion.id] && (
+                    <div style={{ marginTop: 8 }}>
+                      <input type="text" placeholder="Sub-motion title" value={subFormValues[motion.id]?.title || ''} onChange={e => handleSubInputChange(motion.id, 'title', e.target.value)} style={{ width: '100%', fontSize: 16, padding: '8px 10px', boxSizing: 'border-box' }} />
+                      <textarea placeholder="Description (optional)" rows={4} value={subFormValues[motion.id]?.description || ''} onChange={e => handleSubInputChange(motion.id, 'description', e.target.value)} style={{ display: 'block', marginTop: 8, width: '100%', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box' }} />
+                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button className="primary-btn" onClick={() => handleSubmitSubMotion(motion.id)}>Submit Sub-Motion</button>
+                        <button className="secondary-btn" onClick={() => cancelSubForm(motion.id)}>Cancel</button>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', fontSize: 13, marginLeft: 6, whiteSpace: 'nowrap', height: '36px' }}>
+                          <input type="checkbox" checked={subFormValues[motion.id]?.special || false} onChange={e => handleSubInputChange(motion.id, 'special', e.target.checked)} style={{ marginLeft: 6, marginTop: 0, marginBottom: 0, alignSelf: 'center' }} />
+                          <span style={{ marginLeft: 6, lineHeight: '1', alignSelf: 'center' }}>Special Motion</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                  {/* Replies / Discussion (hidden when motion is postponed) */}
+                  {motion.status !== 'postponed' && (
+                  (!motion.special) ? (
+                  <div className="motion-replies" style={{ marginTop: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <strong>Discussion</strong>
+                      <button className="secondary-btn" onClick={() => showReplyForm(motion.id)} style={{ marginLeft: 'auto' }}>Reply</button>
+                    </div>
+                    {motion.replies && motion.replies.length > 0 ? (
+                      <div style={{ marginTop: 8 }}>
+                        {motion.replies.map(r => (
+                          <div key={r.id} style={{ padding: 6, borderBottom: '1px solid #eee' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={
+                                r.stance === 'pro' ? { background: '#e6f4ea', color: '#0a6b2b', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 } :
+                                r.stance === 'con' ? { background: '#fdecea', color: '#a10b0b', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 } :
+                                { background: '#f2f2f2', color: '#666', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }
+                              }>{r.stance.toUpperCase()}</div>
+                              <div style={{ fontSize: 12, color: '#666' }}>{r.createdBy} @ {new Date(r.createdAt).toLocaleString()}</div>
+                            </div>
+                            <div style={{ marginTop: 4 }}>{r.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>No discussion yet.</div>
+                    )}
+                    {replyFormVisible[motion.id] && (
+                      <div style={{ marginTop: 8 }}>
+                        <textarea rows={3} placeholder="Write your reply..." value={replyFormValues[motion.id]?.text || ''} onChange={e => handleReplyInputChange(motion.id, 'text', e.target.value)} style={{ width: '100%', boxSizing: 'border-box' }} />
+                        <div style={{ marginTop: 6 }}>
+                          <label style={{ marginRight: 8 }}>Stance:</label>
+                          <select value={replyFormValues[motion.id]?.stance || 'neutral'} onChange={e => handleReplyInputChange(motion.id, 'stance', e.target.value)}>
+                            <option value="pro">Pro</option>
+                            <option value="con">Con</option>
+                            <option value="neutral">Neutral</option>
+                          </select>
+                        </div>
+                        <div style={{ marginTop: 6 }}>
+                          <button className="primary-btn" onClick={() => handleSubmitReply(motion.id)}>Submit Reply</button>
+                          <button className="secondary-btn" onClick={() => cancelReplyForm(motion.id)} style={{ marginLeft: 8 }}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  ) : (
+                    <div style={{ marginTop: 10, fontSize: 13, color: '#666', fontStyle: 'italic' }}>Discussion is disabled for special motions.</div>
+                  )
                   )}
                   {children.map(c => renderMotion(c, level + 1))}
                 </div>
@@ -414,17 +607,22 @@ function Coordination() {
       
       {/* --- Voting History --- */}
       <section className="voting-history">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <h3 style={{ margin: 0 }}>Voting History</h3>
           <div>
-            <button className="secondary-btn" onClick={handleClearHistory}>Clear All</button>
+            <button className="secondary-btn" onClick={handleClearHistory} style={{ padding: '6px 10px' }}>Clear All</button>
           </div>
         </div>
         {votingHistory.length > 0 ? (
           votingHistory.map(item => (
             <div key={item.id} className="history-item">
-              <div className="history-header">
-                <div className="history-title">{item.title}</div>
+              <div className="history-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="history-title">{item.title}</div>
+                  {item.special && (
+                    <div style={{ background: '#f2f2f2', color: '#333', padding: '4px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: '1px solid #e0e0e0' }}>Special Motion</div>
+                  )}
+                </div>
                 <div className="history-actions">
                   <div className={`history-result ${item.status}`}>{item.status}</div>
                   <button className="delete-history-btn" title="Delete this item" onClick={() => handleDeleteHistory(item.id)}>×</button>
