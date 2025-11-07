@@ -244,6 +244,35 @@ export const addCoordinationReply = ({
   return reply;
 };
 
+// Update an existing reply's text and/or stance
+export const updateCoordinationReply = (motionId, replyId, updates) => {
+  const data = getPageData("coordination");
+  if (!data) return null;
+  const motion = data.activeMotions.find((m) => m.id === motionId);
+  if (!motion || !motion.replies) return null;
+  const reply = motion.replies.find((r) => r.id === replyId);
+  if (!reply) return null;
+  if (updates.text !== undefined) reply.text = (updates.text || "").trim();
+  if (updates.stance !== undefined) reply.stance = updates.stance;
+  reply.updatedAt = new Date().toISOString();
+  reply.updatedBy = getCurrentUser();
+  setPageData("coordination", data);
+  return reply;
+};
+
+// Delete a reply from a motion
+export const deleteCoordinationReply = (motionId, replyId) => {
+  const data = getPageData("coordination");
+  if (!data) return false;
+  const motion = data.activeMotions.find((m) => m.id === motionId);
+  if (!motion || !motion.replies) return false;
+  const initialLen = motion.replies.length;
+  motion.replies = motion.replies.filter((r) => r.id !== replyId);
+  if (motion.replies.length === initialLen) return false;
+  setPageData("coordination", data);
+  return true;
+};
+
 export const startVotingForMotion = (motionId) => {
   const data = getPageData("coordination");
   if (!data) return false;

@@ -8,6 +8,8 @@ import {
   addCoordinationMotion,
   addCoordinationSubMotion,
   addCoordinationReply,
+  updateCoordinationReply,
+  deleteCoordinationReply,
   updateCoordinationMotion,
   startVotingForMotion,
   voteOnCoordinationMotion,
@@ -88,6 +90,8 @@ function Coordination() {
   const [motionSpecial, setMotionSpecial] = useState(false);
   const { user } = useAuth();
   const currentUser = user || 'guest';
+  const newMotionBtnRef = useRef(null);
+  const motionTitleRef = useRef(null);
   // No client-side lock timers: votes finalize immediately server-side.
   // Inline sub-motion form state (mapping motionId -> visible)
   const [subFormVisible, setSubFormVisible] = useState({});
@@ -95,6 +99,12 @@ function Coordination() {
   // Inline reply form state (mapping motionId -> visible)
   const [replyFormVisible, setReplyFormVisible] = useState({});
   const [replyFormValues, setReplyFormValues] = useState({});
+  // Inline reply edit state (mapping replyId -> visible)
+  const [replyEditVisible, setReplyEditVisible] = useState({});
+  const [replyEditValues, setReplyEditValues] = useState({});
+  // Refs for reply textareas so we can focus them when forms open
+  const replyTextareaRefs = useRef({});
+  const replyEditTextareaRefs = useRef({});
   // Inline edit form for motions
   const [editFormVisible, setEditFormVisible] = useState({});
   const [editFormValues, setEditFormValues] = useState({});
@@ -200,12 +210,28 @@ function Coordination() {
         // was closed -> now opening: populate defaults
         copy[id] = { ...(prev[id] || {}), stance: (prev[id] && prev[id].stance) || 'neutral', text: (prev[id] && prev[id].text) || '' };
       }
+      // If opening, focus the newly rendered textarea on next tick and move cursor to end
+      setTimeout(() => {
+        if (!prev[id]) {
+          try {
+            const el = replyTextareaRefs.current[id];
+            if (el) {
+              el.focus();
+              const len = (el.value || '').length;
+              // place caret at end
+              el.setSelectionRange(len, len);
+            }
+          } catch (e) {}
+        }
+      }, 0);
       return copy;
     });
   };
   const cancelReplyForm = (id) => {
     setReplyFormVisible(prev => ({ ...prev, [id]: false }));
     setReplyFormValues(prev => { const c = { ...prev }; delete c[id]; return c; });
+    // cleanup ref
+    try { delete replyTextareaRefs.current[id]; } catch (e) {}
   };
   const handleReplyInputChange = (id, field, value) => {
     setReplyFormValues(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
@@ -225,6 +251,56 @@ function Coordination() {
     } else {
       alert('Failed to add reply.');
     }
+  };
+
+  // --- Reply edit/delete helpers ---
+  const showReplyEditForm = (motionId, reply) => {
+    setReplyEditVisible(prev => ({ ...prev, [reply.id]: !prev[reply.id] }));
+    setReplyEditValues(prev => {
+      const copy = { ...prev };
+      if (prev[reply.id]) {
+        delete copy[reply.id];
+      } else {
+        copy[reply.id] = { motionId, text: reply.text || '', stance: reply.stance || 'neutral' };
+      }
+      // Focus edit textarea when opening and move cursor to end of existing text
+      setTimeout(() => {
+        if (!prev[reply.id]) {
+          try {
+            const el = replyEditTextareaRefs.current[reply.id];
+            if (el) {
+              el.focus();
+              const len = (el.value || '').length;
+              el.setSelectionRange(len, len);
+            }
+          } catch (e) {}
+        }
+      }, 0);
+      return copy;
+    });
+  };
+  const cancelReplyEdit = (replyId) => {
+    setReplyEditVisible(prev => ({ ...prev, [replyId]: false }));
+    setReplyEditValues(prev => { const c = { ...prev }; delete c[replyId]; return c; });
+    // cleanup ref
+    try { delete replyEditTextareaRefs.current[replyId]; } catch (e) {}
+  };
+  const handleReplyEditChange = (replyId, field, value) => {
+    setReplyEditValues(prev => ({ ...prev, [replyId]: { ...(prev[replyId] || {}), [field]: value } }));
+  };
+  const handleSubmitReplyEdit = (replyId) => {
+    const vals = replyEditValues[replyId] || {};
+    if (!vals.text || vals.text.trim() === '') { alert('Please enter reply text.'); return; }
+    const ok = updateCoordinationReply(vals.motionId, replyId, { text: vals.text.trim(), stance: vals.stance });
+    if (!ok) { alert('Failed to update reply.'); return; }
+    cancelReplyEdit(replyId);
+    refreshFromStorage();
+  };
+  const handleDeleteReply = (motionId, replyId) => {
+    if (!window.confirm('Delete this reply? This cannot be undone.')) return;
+    const ok = deleteCoordinationReply(motionId, replyId);
+    if (!ok) { alert('Failed to delete reply.'); return; }
+    refreshFromStorage();
   };
 
   const handlePostpone = (motionId) => {
@@ -312,6 +388,22 @@ function Coordination() {
     }
   };
 
+  // Toggle the 'Propose a New Motion' form and manage keyboard focus (tab in/out)
+  const handleToggleNewMotion = () => {
+    if (isFormVisible) {
+      setIsFormVisible(false);
+      // return focus to the New Motion button
+      setTimeout(() => newMotionBtnRef.current?.focus(), 0);
+    } else {
+      setMotionTitle('');
+      setMotionDescription('');
+      setMotionSpecial(false);
+      setIsFormVisible(true);
+      // focus the title input after the form is visible
+      setTimeout(() => motionTitleRef.current?.focus(), 0);
+    }
+  };
+
   const handleEndSession = () => {
     if (window.confirm('Are you sure you want to end the current session? Active motions will be archived.')) {
       // End each active motion using the canonical end function so outcomes
@@ -359,6 +451,8 @@ function Coordination() {
     setMotionDescription('');
     setMotionSpecial(false);
     setIsFormVisible(false);
+    // return focus to New Motion button for keyboard users
+    setTimeout(() => newMotionBtnRef.current?.focus(), 0);
   };
 
   const determineOutcome = (motion) => {
@@ -447,7 +541,7 @@ function Coordination() {
                 <p style={{ fontSize: '12px', color: '#666' }}>Started: {new Date(currentSession.startTime).toLocaleString()}</p>
               </div>
               <div>
-                <button className="primary-btn" onClick={() => { setMotionTitle(''); setMotionDescription(''); setMotionSpecial(false); setIsFormVisible(true); }}>New Motion</button>
+                <button ref={newMotionBtnRef} className="primary-btn" onClick={handleToggleNewMotion}>New Motion</button>
                 <button className="secondary-btn" onClick={handleEndSession} style={{marginLeft: '10px'}}>End Session</button>
               </div>
             </>
@@ -465,13 +559,13 @@ function Coordination() {
          <section className="motion-form" style={{display: 'block'}}>
             <h3>Propose a New Motion</h3>
             <form onSubmit={handleSubmitMotion}>
-              <div className="field-pair">
-                <input className="form-input" type="text" placeholder="Motion Title" value={motionTitle} onChange={e => setMotionTitle(e.target.value)} />
+                <div className="field-pair">
+                  <input ref={motionTitleRef} className="form-input" type="text" placeholder="Motion Title" value={motionTitle} onChange={e => setMotionTitle(e.target.value)} />
                 <textarea className="form-textarea" placeholder="Description (optional)" rows="3" value={motionDescription} onChange={e => setMotionDescription(e.target.value)}></textarea>
               </div>
-                <div className="form-buttons" style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: 8 }}>
-                <button type="submit" className="primary-btn">Submit Motion</button>
-                <button type="button" className="secondary-btn" onClick={() => { setIsFormVisible(false); setMotionTitle(''); setMotionDescription(''); setMotionSpecial(false); }}>Cancel</button>
+                  <div className="form-buttons" style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                  <button type="submit" className="primary-btn">Submit Motion</button>
+                  <button type="button" className="secondary-btn" onClick={() => { setIsFormVisible(false); setMotionTitle(''); setMotionDescription(''); setMotionSpecial(false); newMotionBtnRef.current?.focus(); }}>Cancel</button>
                 <label style={{ display: 'inline-flex', alignItems: 'center', fontSize: 13, marginLeft: 6, whiteSpace: 'nowrap', height: '36px' }}>
                   <input type="checkbox" checked={motionSpecial} onChange={e => setMotionSpecial(e.target.checked)} style={{ marginLeft: 6, marginTop: 0, marginBottom: 0, alignSelf: 'center' }} />
                   <span style={{ marginLeft: 6, lineHeight: '1', alignSelf: 'center' }}>Special Motion</span>
@@ -539,12 +633,9 @@ function Coordination() {
                           <button className="secondary-btn" onClick={() => handlePostpone(motion.id)}>Postpone Decision</button>
                         </>
                       )}
-                    </div>
-
-                    {/* Edit button visually separated to the right */}
-                    <div className="action-edit" style={{ marginLeft: 12 }}>
-                      <button className="secondary-btn" onClick={() => showEditForm(motion.id, motion)}>Edit</button>
-                    </div>
+          {/* Edit button shown for all motion states (moved outside the conditional) */}
+          <button className="secondary-btn" onClick={() => showEditForm(motion.id, motion)}>Edit</button>
+        </div>
                   </div>
                   {editFormVisible[motion.id] && (
                     <div style={{ marginTop: 8 }}>
@@ -583,46 +674,81 @@ function Coordination() {
                     {motion.status !== 'postponed' && (
                   (!motion.special) ? (
                   <div className="motion-replies" style={{ marginTop: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
                       <strong className="discussion-title">Discussion</strong>
-                      <button className="secondary-btn" onClick={() => showReplyForm(motion.id)} style={{ marginLeft: 'auto' }}>Reply</button>
                     </div>
                     {motion.replies && motion.replies.length > 0 ? (
                       <div style={{ marginTop: 8 }}>
                         {motion.replies.map(r => (
                           <div key={r.id} style={{ padding: 6, borderBottom: '1px solid #eee' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={
-                                r.stance === 'pro' ? { background: '#e6f4ea', color: '#0a6b2b', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 } :
-                                r.stance === 'con' ? { background: '#fdecea', color: '#a10b0b', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 } :
-                                { background: '#f2f2f2', color: '#666', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }
-                              }>{r.stance.toUpperCase()}</div>
-                              <div style={{ fontSize: 12, color: '#666' }}>{r.createdBy} @ {new Date(r.createdAt).toLocaleString()}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={
+                                  r.stance === 'pro' ? { background: '#e6f4ea', color: '#0a6b2b', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 } :
+                                  r.stance === 'con' ? { background: '#fdecea', color: '#a10b0b', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 } :
+                                  { background: '#f2f2f2', color: '#666', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }
+                                }>{r.stance.toUpperCase()}</div>
+                                <div style={{ fontSize: 12, color: '#666' }}>{r.createdBy} @ {new Date(r.createdAt).toLocaleString()}</div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 8 }}>
+                                {r.createdBy === currentUser && (
+                                  <>
+                                    <button className="secondary-btn" onClick={() => showReplyEditForm(motion.id, r)}>Edit</button>
+                                    <button className="secondary-btn" onClick={() => handleDeleteReply(motion.id, r.id)}>Delete</button>
+                                  </>
+                                )}
+                              </div>
                             </div>
-                            <div style={{ marginTop: 4 }}>{r.text}</div>
+                            <div style={{ marginTop: 4 }}>
+                              {replyEditVisible[r.id] ? (
+                                <div>
+                                  <textarea ref={el => { try { replyEditTextareaRefs.current[r.id] = el; } catch (e) {} }} className="form-textarea" rows={3} value={replyEditValues[r.id]?.text || ''} onChange={e => handleReplyEditChange(r.id, 'text', e.target.value)} />
+                                  <div className="reply-controls" style={{ marginTop: 6 }}>
+                                    <label className="reply-label">Stance:</label>
+                                    <select value={replyEditValues[r.id]?.stance || r.stance || 'neutral'} onChange={e => handleReplyEditChange(r.id, 'stance', e.target.value)}>
+                                      <option value="pro">Pro</option>
+                                      <option value="con">Con</option>
+                                      <option value="neutral">Neutral</option>
+                                    </select>
+                                  </div>
+                                  <div style={{ marginTop: 6 }}>
+                                    <button className="primary-btn" onClick={() => handleSubmitReplyEdit(r.id)}>Save</button>
+                                    <button className="secondary-btn" onClick={() => cancelReplyEdit(r.id)} style={{ marginLeft: 8 }}>Cancel</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>{r.text}</div>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
                     ) : (
                       <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>No discussion yet.</div>
                     )}
-                    {replyFormVisible[motion.id] && (
-                      <div style={{ marginTop: 8 }}>
-                        <textarea className="form-textarea" rows={3} placeholder="Write your reply..." value={replyFormValues[motion.id]?.text || ''} onChange={e => handleReplyInputChange(motion.id, 'text', e.target.value)} />
-                        <div className="reply-controls">
-                          <label className="reply-label">Stance:</label>
-                          <select value={replyFormValues[motion.id]?.stance || 'neutral'} onChange={e => handleReplyInputChange(motion.id, 'stance', e.target.value)}>
-                            <option value="pro">Pro</option>
-                            <option value="con">Con</option>
-                            <option value="neutral">Neutral</option>
-                          </select>
-                        </div>
-                        <div style={{ marginTop: 6 }}>
-                          <button className="primary-btn" onClick={() => handleSubmitReply(motion.id)}>Submit Reply</button>
-                          <button className="secondary-btn" onClick={() => cancelReplyForm(motion.id)} style={{ marginLeft: 8 }}>Cancel</button>
-                        </div>
+                    {/* Replies list rendered above; place Reply button at the bottom-left of the discussion area */}
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <button className="secondary-btn" onClick={() => showReplyForm(motion.id)}>Reply</button>
                       </div>
-                    )}
+                      {replyFormVisible[motion.id] && (
+                        <div style={{ marginTop: 8 }}>
+                          <textarea ref={el => { try { replyTextareaRefs.current[motion.id] = el; } catch (e) {} }} className="form-textarea" rows={3} placeholder="Write your reply..." value={replyFormValues[motion.id]?.text || ''} onChange={e => handleReplyInputChange(motion.id, 'text', e.target.value)} />
+                          <div className="reply-controls">
+                            <label className="reply-label">Stance:</label>
+                            <select value={replyFormValues[motion.id]?.stance || 'neutral'} onChange={e => handleReplyInputChange(motion.id, 'stance', e.target.value)}>
+                              <option value="pro">Pro</option>
+                              <option value="con">Con</option>
+                              <option value="neutral">Neutral</option>
+                            </select>
+                          </div>
+                          <div style={{ marginTop: 6 }}>
+                            <button className="primary-btn" onClick={() => handleSubmitReply(motion.id)}>Submit Reply</button>
+                            <button className="secondary-btn" onClick={() => cancelReplyForm(motion.id)} style={{ marginLeft: 8 }}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   ) : (
                     <div style={{ marginTop: 10, fontSize: 13, color: '#666', fontStyle: 'italic' }}>Discussion is disabled for special motions.</div>
