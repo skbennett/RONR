@@ -8,106 +8,57 @@ const API_URL = 'http://localhost:5000'; // Flask default port
 function Login() {
   // --- STATE MANAGEMENT ---
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login } = useAuth(); // This is the login function from AuthContext
 
   // --- EVENT HANDLERS ---
-  const handleLogin = async (e) => {
-  e.preventDefault();
   
-  if (!username || !password) {
-    alert('Please enter both username and password.');
-    return;
-  }
-
-  setLoading(true);
-  try {
-    const response = await fetch(`${API_URL}/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username, password }),
-    });
-
-    const data = await response.json();
-
-    if (response.ok && data.success) {
-      login(username);
-      alert(`Welcome, ${username}!`);
-      navigate('/');
-    } else {
-      alert('Invalid username or password.');
-    }
-  } catch (error) {
-    console.error('Login error:', error);
-    alert('Failed to login. Please check if the server is running.');
-  } finally {
-    setLoading(false);
-  }
-};
-
-  const handleCreateAccount = async () => {
-    if (!username || !email || !password) {
-      alert('Please fill out all fields to create an account.');
-      return;
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      alert('Please enter a valid email address.');
+  // 1. THIS IS THE MISSING FUNCTION
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!username || !password) {
+      alert('Please enter both username and password.');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/register`, {
+      // Assumes your backend has a '/login' endpoint
+      const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          username: username,
-          email: email,
-          password: password, // Note: Should be hashed on backend
-        }),
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await response.json();
 
-      if (response.ok) {
-        alert('Account created successfully! You can now log in.');
-        // Clear fields and switch back to login mode
-        setUsername('');
-        setEmail('');
-        setPassword('');
-        setIsCreatingAccount(false);
+      if (response.ok && data.success) { // Check for success flag from server
+        login(username); // Call the context login function to set auth state
+        navigate('/'); // Navigate to home page on success
       } else {
-        alert(data.error || 'Failed to create account.');
+        alert(data.error || 'Invalid username or password.');
       }
     } catch (error) {
-      console.error('Registration error:', error);
-      alert('Failed to create account. Please check if the server is running.');
+      console.error('Login error:', error);
+      alert('Failed to login. Please check if the server is running.');
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleMode = () => {
-    setIsCreatingAccount(!isCreatingAccount);
-    setUsername('');
-    setEmail('');
-    setPassword('');
+  // 2. This function navigates to the create account page
+  const handleNavigateToCreate = () => {
+    navigate('/create-account');
   };
 
   return (
+    // 3. The component is now simplified
     <div className="login-container">
-      <h2>{isCreatingAccount ? 'Create Account' : 'Member Login'}</h2>
+      <h2>Member Login</h2>
       
       <form onSubmit={handleLogin}>
         <input
@@ -120,18 +71,6 @@ function Login() {
           disabled={loading}
         />
         
-        {isCreatingAccount && (
-          <input
-            type="email"
-            id="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={loading}
-          />
-        )}
-        
         <input
           type="password"
           id="password"
@@ -142,43 +81,21 @@ function Login() {
           disabled={loading}
         />
         
-        {!isCreatingAccount && (
-          <button type="submit" disabled={loading}>
-            {loading ? 'Signing In...' : 'Sign In'}
-          </button>
-        )}
+        <button type="submit" disabled={loading}>
+          {loading ? 'Signing In...' : 'Sign In'}
+        </button>
       </form>
       
       <div className="login-actions">
-        {isCreatingAccount ? (
-          <>
-            <button 
-              type="button" 
-              className="create-account" 
-              onClick={handleCreateAccount}
-              disabled={loading}
-            >
-              {loading ? 'Creating...' : 'Create Account'}
-            </button>
-            <button 
-              type="button" 
-              className="toggle-mode" 
-              onClick={toggleMode}
-              disabled={loading}
-            >
-              Back to Login
-            </button>
-          </>
-        ) : (
-          <button 
-            type="button" 
-            className="create-account" 
-            onClick={toggleMode}
-            disabled={loading}
-          >
-            Create New Account
-          </button>
-        )}
+        {/* This button now navigates instead of toggling */}
+        <button 
+          type="button" 
+          className="create-account" 
+          onClick={handleNavigateToCreate}
+          disabled={loading}
+        >
+          Create New Account
+        </button>
         
         <button 
           type="button" 
