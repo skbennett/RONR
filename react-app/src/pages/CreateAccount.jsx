@@ -1,24 +1,37 @@
 // src/pages/CreateAccount.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+// We don't need useAuth here, as we are creating an account, not logging in
+// import { useAuth } from '../contexts/AuthContext';
+
+// Define the API URL for your backend
+const API_URL = 'http://localhost:5000'; // Or your backend server address
 
 function CreateAccount() {
   // --- STATE MANAGEMENT ---
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false); // Added loading state
   const navigate = useNavigate();
 
   // --- EVENT HANDLERS ---
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    // Validate inputs
-    if (!username || !password || !confirmPassword) {
+    // --- 1. Client-side Validation ---
+    if (!username || !password || !confirmPassword || !email) {
       setError('Please fill in all fields.');
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Please enter a valid email address.');
       return;
     }
 
@@ -32,22 +45,34 @@ function CreateAccount() {
       return;
     }
 
-    // Get existing users from localStorage
-    const users = JSON.parse(localStorage.getItem('courtorder_users') || '{}');
+    // --- 2. API Call ---
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/create-account`, { // Assuming a /create-account endpoint
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, email, password }),
+      });
 
-    // Check if username is taken
-    if (users[username]) {
-      setError('This username is already taken. Please choose another.');
-      return;
+      const data = await response.json();
+
+      if (response.ok) {
+        // --- 3. Handle Success ---
+        alert('Account created successfully! Please log in.');
+        navigate('/login'); // Redirect to login page
+      } else {
+        // --- 4. Handle Server-side Errors ---
+        setError(data.error || 'Failed to create account. Please try again.');
+      }
+    } catch (error) {
+      // --- 5. Handle Network/Fetch Errors ---
+      console.error('Registration error:', error);
+      setError('Failed to create account. Please check if the server is running.');
+    } finally {
+      setLoading(false);
     }
-
-    // Add new user
-    users[username] = password;
-    localStorage.setItem('courtorder_users', JSON.stringify(users));
-
-    // Show success message and redirect to login
-    alert('Account created successfully! Please log in.');
-    navigate('/login');
   };
 
   return (
@@ -64,6 +89,19 @@ function CreateAccount() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Enter username"
             required
+            disabled={loading} // Disable input when loading
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="email">Email</label>
+          <input
+            type="email" // Use type="email" for better validation
+            id="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter email"
+            required
+            disabled={loading} // Disable input when loading
           />
         </div>
         <div className="form-group">
@@ -73,8 +111,9 @@ function CreateAccount() {
             id="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter password"
+            placeholder="Enter password (min 8 characters)"
             required
+            disabled={loading} // Disable input when loading
           />
         </div>
         <div className="form-group">
@@ -86,11 +125,19 @@ function CreateAccount() {
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm password"
             required
+            disabled={loading} // Disable input when loading
           />
         </div>
         <div className="form-actions">
-          <button type="submit" className="create-account-btn">Create Account</button>
-          <button type="button" className="back-to-login-btn" onClick={() => navigate('/login')}>
+          <button type="submit" className="create-account-btn" disabled={loading}>
+            {loading ? 'Creating Account...' : 'Create Account'}
+          </button>
+          <button
+            type="button"
+            className="back-to-login-btn"
+            onClick={() => navigate('/login')}
+            disabled={loading} // Disable button when loading
+          >
             Back to Login
           </button>
         </div>
