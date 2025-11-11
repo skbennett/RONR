@@ -1,0 +1,501 @@
+:root {
+  --bg: #f7f9fb;
+  --card: #ffffff;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --accent-2: #0ea5a4;
+  --danger: #ef4444;
+  --glass: rgba(15, 23, 42, 0.04);
+  --container-max: 1200px;
+}
+
+/* Page layout */
+.coordination-container {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial;
+  color: #0f172a;
+  background: var(--bg);
+  padding: 20px;
+  max-width: var(--container-max);
+  margin: 0 auto; /* center the page */
+  min-height: 100vh;
+}
+
+.session-status,
+.motion-form,
+.active-motions,
+.voting-history {
+  margin-bottom: 20px;
+  background: transparent;
+}
+
+/* Motion card */
+.motion-card {
+  background: var(--card);
+  padding: 16px;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(12, 20, 32, 0.06);
+  border: 1px solid var(--glass);
+  /* smooth hover/raise effect */
+  transition: transform 160ms ease, box-shadow 160ms ease,
+    border-color 160ms ease;
+  will-change: transform, box-shadow;
+}
+
+/* Slight raise and deeper shadow on hover for better affordance */
+.motion-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 14px 30px rgba(12, 20, 32, 0.12);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+.motion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.motion-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0; /* allow shrinking so title can wrap without overlapping actions */
+  flex: 1 1 auto;
+}
+.motion-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: #0b1220;
+  white-space: normal; /* allow wrapping */
+  word-break: break-word;
+  line-height: 1.2;
+  margin: 0;
+}
+.motion-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0; /* keep badges and status from shrinking */
+}
+.special-badge {
+  background: #f2f4f7;
+  color: #213547;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #e6edf3;
+}
+
+/* Slightly smaller variant when used in the motion header action area */
+.header-badge {
+  padding: 4px 8px;
+  font-size: 12px;
+  margin-right: 6px;
+}
+.motion-status {
+  text-transform: capitalize;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+.motion-status.voting {
+  background: #fff7ed;
+  color: #92400e;
+  border: 1px solid #fde8c7;
+}
+.motion-status.postponed {
+  background: #eef2ff;
+  color: #1e3a8a;
+  border: 1px solid #dbeafe;
+}
+.motion-status.completed {
+  background: #eefef6;
+  color: #065f46;
+  border: 1px solid #d1fae5;
+}
+
+.motion-description {
+  margin-top: 8px;
+  color: var(--muted);
+}
+.motion-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Voting */
+.voting-section,
+.completed-section {
+  margin-top: 12px;
+}
+.vote-counts {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.vote-count {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-weight: 600;
+}
+.vote-count .count {
+  font-weight: 800;
+  color: #0b1220;
+}
+.vote-buttons {
+  display: flex;
+  gap: 8px;
+}
+.vote-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #f8fafc;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--muted);
+}
+.vote-btn.joined {
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.08);
+  transform: translateY(-1px);
+}
+.vote-btn.for {
+  background: linear-gradient(180deg, #10b981, #059669);
+  color: #ffffff;
+  border-color: rgba(6, 95, 70, 0.12);
+}
+.vote-btn.against {
+  background: linear-gradient(180deg, #ef4444, #dc2626);
+  color: #ffffff;
+  border-color: rgba(127, 29, 29, 0.12);
+}
+.vote-btn.abstain {
+  background: linear-gradient(180deg, #f3f4f6, #e5e7eb);
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.06);
+}
+
+/* Color the vote counts to match the button colors for clearer at-a-glance reading */
+.vote-counts .vote-count:nth-child(1) .count {
+  color: #059669;
+}
+.vote-counts .vote-count:nth-child(2) .count {
+  color: #dc2626;
+}
+.vote-counts .vote-count:nth-child(3) .count {
+  color: #6b7280;
+}
+.vote-counts .vote-count:nth-child(1) span:first-child::before,
+.vote-counts .vote-count:nth-child(2) span:first-child::before,
+.vote-counts .vote-count:nth-child(3) span:first-child::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.vote-counts .vote-count:nth-child(1) span:first-child::before {
+  background: #059669;
+  box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.07);
+}
+.vote-counts .vote-count:nth-child(2) span:first-child::before {
+  background: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.06);
+}
+.vote-counts .vote-count:nth-child(3) span:first-child::before {
+  background: #9ca3af;
+  box-shadow: 0 0 0 4px rgba(156, 163, 175, 0.06);
+}
+
+/* Buttons */
+.primary-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.primary-btn:hover {
+  filter: brightness(0.98);
+}
+.secondary-btn {
+  background: transparent;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Motion actions row */
+.action-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.action-edit {
+  margin-left: 12px;
+}
+
+/* Replies */
+.motion-replies {
+  margin-top: 12px;
+}
+.motion-replies .history-title {
+  font-weight: 700;
+}
+
+/* History */
+.history-item {
+  background: var(--card);
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--glass);
+  margin-bottom: 10px;
+  box-shadow: 0 6px 14px rgba(12, 20, 32, 0.04);
+  /* smooth hover/raise effect to match motion cards */
+  transition: transform 160ms ease, box-shadow 160ms ease,
+    border-color 160ms ease;
+  will-change: transform, box-shadow;
+}
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.history-title {
+  font-weight: 700;
+}
+.history-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0; /* allow shrinking for overflow handling */
+  flex: 1 1 auto;
+}
+/* Allow the title to wrap onto subsequent lines but keep it confined to the
+   left area reserved by the flex layout so it never intrudes into the action
+   badges on the right. */
+.history-title {
+  font-weight: 700;
+  display: block;
+  word-break: break-word;
+  white-space: normal; /* allow wrapping */
+  line-height: 1.2;
+  margin: 0; /* reset if any inline default margins appear */
+}
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0; /* keep action badges from shrinking */
+}
+/* Slightly smaller special badge for history and spacing */
+.history-badge {
+  padding: 4px 8px;
+  font-size: 12px;
+  margin-right: 6px;
+}
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.history-result {
+  text-transform: capitalize;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+.history-result.passed {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #bbf7d0;
+}
+.history-result.failed {
+  background: #fff1f2;
+  color: #7f1d1d;
+  border: 1px solid #fecaca;
+}
+.history-votes {
+  margin-top: 8px;
+  color: var(--muted);
+}
+.delete-history-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+/* Slight raise and deeper shadow on hover for history cards */
+.history-item:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 14px 30px rgba(12, 20, 32, 0.12);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+/* Small utilities */
+.no-motions,
+.no-history {
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+  .coordination-container {
+    padding: 12px;
+  }
+  .motion-card,
+  .history-item {
+    padding: 12px;
+  }
+}
+
+/* Form controls to match page aesthetic */
+.form-input,
+.form-textarea,
+select {
+  width: 100%;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: #fff;
+  color: #0f172a;
+  box-sizing: border-box;
+  transition: box-shadow 120ms ease, border-color 120ms ease,
+    transform 80ms ease;
+}
+.form-textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+.form-input:focus,
+.form-textarea:focus,
+select:focus {
+  outline: none;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.35);
+  transform: translateY(-1px);
+}
+.motion-form input::placeholder,
+.motion-form textarea::placeholder,
+.form-input::placeholder,
+.form-textarea::placeholder {
+  color: #94a3b8;
+}
+
+/* Smaller controls (inline labels/checks) */
+label input[type="checkbox"] {
+  margin-left: 6px;
+}
+
+.form-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Reply controls: place label and select inline and tighten vertical spacing */
+.reply-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px; /* move up slightly */
+}
+.reply-controls .reply-label {
+  margin: 0;
+  font-weight: 600;
+}
+.reply-controls .reply-label {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  /* ensure underline does not skip descenders like 'g' */
+  text-decoration-skip-ink: none;
+  -webkit-text-decoration-skip-ink: none;
+}
+.reply-controls select {
+  width: auto; /* override global select width:100% */
+  min-width: 140px;
+}
+
+/* Edit header and discussion underline */
+.edit-header {
+  margin-bottom: 6px;
+}
+.editing-label {
+  font-weight: 700;
+  color: #0b1220;
+  display: inline-block;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  margin-left: 3px;
+  text-decoration-skip-ink: none;
+  -webkit-text-decoration-skip-ink: none;
+}
+.discussion-title {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
+}
+
+/* Field pair: title above, description below with clear separator */
+.field-pair {
+  margin-top: 8px;
+}
+.field-pair .form-input {
+  border-radius: 8px 8px 0 0;
+  border-bottom: none;
+}
+.field-pair .form-textarea {
+  border-top: 2px solid #0f172a;
+  border-radius: 0 0 8px 8px;
+  margin-top: 0;
+}
+/* Tighter spacing for the main 'Propose a New Motion' form so title and description sit closer */
+.motion-form .field-pair {
+  margin-top: 6px;
+}
+.motion-form .field-pair .form-input {
+  padding: 8px 10px;
+  margin: 0;
+  margin-bottom: 0;
+  display: block;
+  border-bottom: none;
+}
+.motion-form .field-pair .form-textarea {
+  padding: 8px 10px;
+  margin: 0;
+  display: block;
+  /* Solid black divider and no visible gap between input and textarea */
+  border-top: 2px solid #000;
+  margin-top: 0;
+  border-radius: 0 0 8px 8px;
+}
+
+/* Ensure inputs use the same font and size across the page */
+.coordination-container input[type="text"],
+.coordination-container textarea,
+.coordination-container select,
+.form-input,
+.form-textarea {
+  font-family: inherit;
+  font-size: 14px;
+}
