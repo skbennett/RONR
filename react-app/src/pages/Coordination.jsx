@@ -108,6 +108,19 @@ function Coordination() {
   // Inline edit form for motions
   const [editFormVisible, setEditFormVisible] = useState({});
   const [editFormValues, setEditFormValues] = useState({});
+  // History discussion toggles (id -> bool)
+  const [historyDiscussionOpen, setHistoryDiscussionOpen] = useState({});
+
+  // History voters toggles (id -> bool)
+  const [historyVotersOpen, setHistoryVotersOpen] = useState({});
+
+  const toggleHistoryDiscussion = (id) => {
+    setHistoryDiscussionOpen(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleHistoryVoters = (id) => {
+    setHistoryVotersOpen(prev => ({ ...prev, [id]: !prev[id] }));
+  };
   
   // --- DATA INITIALIZATION ---
   useEffect(() => {
@@ -511,6 +524,47 @@ function Coordination() {
     }
   };
 
+  // Allow a member who voted FOR a historical motion to overturn it (bring it back to active)
+  const handleOverturnHistory = (item) => {
+    if (!currentUser) {
+      alert('You must be logged in to overturn a decision.');
+      return;
+    }
+    const vote = (item.userVotes && item.userVotes[currentUser]) || '';
+    const votedFor = ['for', 'pro'].includes(vote.toString().toLowerCase());
+    if (!votedFor) {
+      alert('Only members who voted in favor of this motion can overturn the decision.');
+      return;
+    }
+    if (!window.confirm('Bring this motion back to active motions for a new vote?')) return;
+
+    const data = getCoordinationData() || {};
+    const newHistory = (data.votingHistory || []).filter(h => h.id !== item.id);
+
+    // Prepare revived motion: reset live voting state but keep previous outcome for audit
+    const revived = {
+      ...item,
+      status: 'voting',
+      // store previous votes for reference
+      previousOutcome: item.status,
+      previousVotes: item.votes,
+      votes: { for: 0, against: 0, abstain: 0 },
+      userVotes: {},
+      voters: [],
+      // remove archival timestamps so this becomes a fresh motion
+      votingStartTime: new Date().toISOString(),
+      endTime: undefined,
+      resumedFromHistory: item.id,
+      resumedAt: new Date().toISOString(),
+    };
+
+    const newActive = [revived, ...(data.activeMotions || [])];
+    updateCoordinationData({ activeMotions: newActive, votingHistory: newHistory });
+    // Start voting for revived motion
+    try { startVotingForMotion(revived.id); } catch (e) { console.warn('startVotingForMotion failed', e); }
+    refreshFromStorage();
+  };
+
   const handleClearHistory = () => {
     if (!window.confirm('Clear all voting history? This cannot be undone.')) return;
     setVotingHistory([]);
@@ -786,12 +840,78 @@ function Coordination() {
                         <div className="special-badge history-badge">Special Motion</div>
                       )}
                       <div className={`history-result ${item.status}`}>{item.status}</div>
+                      <button className="secondary-btn" style={{ padding: '6px 8px' }} onClick={() => toggleHistoryDiscussion(item.id)}>
+                        {historyDiscussionOpen[item.id] ? 'Hide Discussion' : 'Show Discussion'}
+                      </button>
+                      <button className="secondary-btn" style={{ padding: '6px 8px' }} onClick={() => toggleHistoryVoters(item.id)}>
+                        {historyVotersOpen[item.id] ? 'Hide Voters' : 'Show Voters'}
+                      </button>
+                      {/* Show Overturn when current user voted for this motion in the past */}
+                      {(item.userVotes && ['for', 'pro'].includes(((item.userVotes[currentUser]||'') + '').toString().toLowerCase())) && (
+                        <button className="primary-btn" onClick={() => handleOverturnHistory(item)}>Overturn</button>
+                      )}
                       <button className="delete-history-btn" title="Delete this item" onClick={() => handleDeleteHistory(item.id)}>×</button>
                     </div>
                   </div>
               <div className="history-votes">
                 For: {item.votes.for} | Against: {item.votes.against} | Abstain: {item.votes.abstain}
               </div>
+
+              {/* Collapsible discussion area for archived motion */}
+              {historyDiscussionOpen[item.id] && (
+                <div className="motion-replies" style={{ marginTop: 10 }}>
+                  <div className="history-title" style={{ fontSize: 13, marginBottom: 8 }}>Discussion</div>
+                  {/* Support multiple possible keys for archived replies (defensive) */}
+                  {((item.replies && item.replies.length) || (item.discussion && item.discussion.length)) ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(item.replies || item.discussion).map(reply => {
+                        const raw = (reply.stance || '').toString().toLowerCase();
+                        const stanceKey = (raw === 'for' || raw === 'pro') ? 'for' : (raw === 'against' || raw === 'con') ? 'against' : 'neutral';
+                        const stanceLabel = stanceKey === 'for' ? 'Pro' : stanceKey === 'against' ? 'Con' : 'Neutral';
+                        return (
+                          <div key={reply.id || `${reply.createdAt}-${Math.random()}`} className={`discussion-reply ${stanceKey}`}>
+                            <div className="reply-meta">
+                              <div style={{ fontWeight: 700 }}>{reply.author || reply.createdBy || reply.username || 'Unknown'}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div className={`reply-stance ${stanceKey}`}>{stanceLabel}</div>
+                                <div style={{ fontSize: 12, color: '#666' }}>{reply.createdAt ? new Date(reply.createdAt).toLocaleString() : ''}</div>
+                              </div>
+                            </div>
+                            <div style={{ marginTop: 6, color: 'var(--muted)' }}>{reply.text || reply.body || ''}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="no-history" style={{ margin: 0 }}>No discussion history for this motion.</p>
+                  )}
+                </div>
+              )}
+              {/* Collapsible voters list for archived motion */}
+              {historyVotersOpen[item.id] && (
+                <div className="voters-list" style={{ marginTop: 10 }}>
+                  <div className="history-title" style={{ fontSize: 13, marginBottom: 8 }}>Voters</div>
+                  {item.userVotes && Object.keys(item.userVotes).length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {Object.entries(item.userVotes).map(([username, vote]) => {
+                        const raw = (vote || '').toString().toLowerCase();
+                        const vKey = (raw === 'for' || raw === 'pro') ? 'for' : (raw === 'against' || raw === 'con') ? 'against' : 'neutral';
+                        const vLabel = vKey === 'for' ? 'For' : vKey === 'against' ? 'Against' : 'Abstain';
+                        return (
+                          <div key={username} className={`voter-row ${vKey}`} style={{ padding: 8, background: 'var(--card)', borderRadius: 8, border: '1px solid rgba(15,23,42,0.04)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ fontWeight: 700 }}>{username}</div>
+                              <div className={`reply-stance ${vKey}`}>{vLabel}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="no-history" style={{ margin: 0 }}>No voter records for this motion.</p>
+                  )}
+                </div>
+              )}
             </div>
           ))
         ) : (
