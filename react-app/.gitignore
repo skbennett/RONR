@@ -25,3 +25,6 @@ dist-ssr
 
 # Backend
 *.db
+
+# Local environment (do not commit local env files)
+.env.local

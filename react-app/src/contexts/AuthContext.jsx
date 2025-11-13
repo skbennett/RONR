@@ -1,64 +1,78 @@
 // src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react'
+import { supabase } from '../supabaseClient'
 
-const AuthContext = createContext();
+const AuthContext = createContext()
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
+  const context = useContext(AuthContext)
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider')
   }
-  return context;
-};
+  return context
+}
 
 export const AuthProvider = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is logged in on app start
-    const checkAuthStatus = () => {
+    let mounted = true
+
+    const initAuth = async () => {
       try {
-        const authData = JSON.parse(localStorage.getItem('courtorder_auth'));
-        if (authData && authData.isLoggedIn) {
-          setIsAuthenticated(true);
-          setUser(authData.username);
-        }
-      } catch (error) {
-        console.error('Error checking auth status:', error);
+        const { data } = await supabase.auth.getSession()
+        const session = data?.session ?? null
+        if (!mounted) return
+        setUser(session?.user ?? null)
+        setIsAuthenticated(!!session?.user)
+      } catch (err) {
+        console.error('Error getting initial session from Supabase:', err)
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false)
       }
-    };
+    }
 
-    checkAuthStatus();
-  }, []);
+    initAuth()
 
-  const login = (username) => {
-    const authData = { isLoggedIn: true, username: username };
-    localStorage.setItem('courtorder_auth', JSON.stringify(authData));
-    setIsAuthenticated(true);
-    setUser(username);
-  };
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+      setIsAuthenticated(!!session?.user)
+    })
 
-  const logout = () => {
-    localStorage.removeItem('courtorder_auth');
-    setIsAuthenticated(false);
-    setUser(null);
-  };
+    return () => {
+      mounted = false
+      if (listener?.subscription) listener.subscription.unsubscribe()
+    }
+  }, [])
+
+  const signUp = async (email, password) => {
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    return { data, error }
+  }
+
+  const signIn = async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    return { data, error }
+  }
+
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) console.error('Error signing out:', error)
+    setUser(null)
+    setIsAuthenticated(false)
+    return { error }
+  }
 
   const value = {
     isAuthenticated,
     user,
     isLoading,
-    login,
-    logout
-  };
+    signUp,
+    signIn,
+    signOut
+  }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}

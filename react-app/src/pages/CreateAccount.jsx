@@ -1,11 +1,7 @@
 // src/pages/CreateAccount.jsx
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-// We don't need useAuth here, as we are creating an account, not logging in
-// import { useAuth } from '../contexts/AuthContext';
-
-// Define the API URL for your backend
-const API_URL = 'http://localhost:5000'; // Or your backend server address
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 
 function CreateAccount() {
   // --- STATE MANAGEMENT ---
@@ -15,7 +11,8 @@ function CreateAccount() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false); // Added loading state
-  const navigate = useNavigate();
+  const navigate = useNavigate()
+  const { signUp } = useAuth()
 
   // --- EVENT HANDLERS ---
   const handleSubmit = async (e) => {
@@ -45,33 +42,27 @@ function CreateAccount() {
       return;
     }
 
-    // --- 2. API Call ---
-    setLoading(true);
+    // --- 2. Supabase Auth Sign Up ---
+    setLoading(true)
     try {
-      const response = await fetch(`${API_URL}/create-account`, { // Assuming a /create-account endpoint
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, email, password }),
-      });
+      // Use Supabase signUp (email + password)
+      const { data, error: signUpError } = await signUp(email, password)
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // --- 3. Handle Success ---
-        alert('Account created successfully! Please log in.');
-        navigate('/login'); // Redirect to login page
-      } else {
-        // --- 4. Handle Server-side Errors ---
-        setError(data.error || 'Failed to create account. Please try again.');
+      if (signUpError) {
+        // Supabase returns helpful error messages
+        setError(signUpError.message || 'Failed to create account. Please try again.')
+        return
       }
-    } catch (error) {
-      // --- 5. Handle Network/Fetch Errors ---
-      console.error('Registration error:', error);
-      setError('Failed to create account. Please check if the server is running.');
+
+      // Optionally you could store the username in a separate profiles table.
+      // For now, inform the user and navigate to login (or show confirmation if email confirm required).
+      alert('Account created successfully! Please check your email to confirm (if required), then log in.')
+      navigate('/login')
+    } catch (err) {
+      console.error('Registration error:', err)
+      setError('Failed to create account. Please try again.')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   };
 
