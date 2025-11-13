@@ -257,6 +257,58 @@
   font-weight: 700;
 }
 
+/* Discussion reply styling for archived history items */
+.discussion-reply {
+  background: var(--card);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.discussion-reply .reply-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Voter row: show username and stance badge together (not pushed to the far right) */
+.voter-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.reply-stance {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+.reply-stance.for {
+  background: #059669;
+}
+.reply-stance.against {
+  background: #dc2626;
+}
+.reply-stance.neutral {
+  background: #9ca3af;
+  color: #0f172a;
+}
+.discussion-reply.for {
+  border-left: 4px solid #059669;
+  padding-left: 12px;
+}
+.discussion-reply.against {
+  border-left: 4px solid #dc2626;
+  padding-left: 12px;
+}
+.discussion-reply.neutral {
+  border-left: 4px solid rgba(156, 163, 175, 0.6);
+  padding-left: 12px;
+}
+
 /* History */
 .history-item {
   background: var(--card);
