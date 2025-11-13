@@ -47,8 +47,11 @@ export const AuthProvider = ({ children }) => {
     }
   }, [])
 
-  const signUp = async (email, password) => {
-    const { data, error } = await supabase.auth.signUp({ email, password })
+  // accept an optional username to save in the user's metadata on sign up
+  const signUp = async (email, password, username) => {
+    // pass username into the user metadata when creating the account
+    const options = username ? { data: { username } } : undefined
+    const { data, error } = await supabase.auth.signUp({ email, password }, options)
     return { data, error }
   }
 

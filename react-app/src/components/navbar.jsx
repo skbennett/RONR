@@ -25,6 +25,8 @@ function Navbar() {
     navigate('/')
   }
 
+  const displayName = (user && (user.user_metadata?.username || user.user_metadata?.full_name || (user.email ? user.email.split('@')[0] : null))) || 'Member'
+
   return (
     <>
       <nav className="navbar">
@@ -50,7 +52,7 @@ function Navbar() {
         {isAuthenticated ? (
           <div className="user-info desktop-only">
             <button className="logout-btn" onClick={handleLogout}>
-              {`Sign Out (${(user && (user.user_metadata?.full_name || user.email)) || 'Member'})`}
+              {`Sign Out (${displayName})`}
             </button>
           </div>
         ) : (
@@ -78,7 +80,7 @@ function Navbar() {
         {isAuthenticated ? (
           <div className="mobile-user-info">
             <button className="logout-btn-mobile" onClick={handleLogout}>
-              {`Sign Out (${(user && (user.user_metadata?.full_name || user.email)) || 'Member'})`}
+              {`Sign Out (${displayName})`}
             </button>
           </div>
         ) : (
