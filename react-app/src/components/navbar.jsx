@@ -9,8 +9,8 @@ import gavelLogo from '../Images/Court Gavel.png';
 
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const navigate = useNavigate();
-  const { isAuthenticated, user, logout } = useAuth();
+  const navigate = useNavigate()
+  const { isAuthenticated, user, signOut } = useAuth()
 
   const handleLinkClick = (path) => {
     setIsMenuOpen(false);
@@ -19,11 +19,11 @@ function Navbar() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    setIsMenuOpen(false);
-    navigate('/');
-  };
+  const handleLogout = async () => {
+    await signOut()
+    setIsMenuOpen(false)
+    navigate('/')
+  }
 
   return (
     <>
@@ -50,7 +50,7 @@ function Navbar() {
         {isAuthenticated ? (
           <div className="user-info desktop-only">
             <button className="logout-btn" onClick={handleLogout}>
-              {`Sign Out (${user || 'Admin'})`}
+              {`Sign Out (${(user && (user.user_metadata?.full_name || user.email)) || 'Member'})`}
             </button>
           </div>
         ) : (
@@ -78,7 +78,7 @@ function Navbar() {
         {isAuthenticated ? (
           <div className="mobile-user-info">
             <button className="logout-btn-mobile" onClick={handleLogout}>
-              {`Sign Out (${user || 'Admin'})`}
+              {`Sign Out (${(user && (user.user_metadata?.full_name || user.email)) || 'Member'})`}
             </button>
           </div>
         ) : (
