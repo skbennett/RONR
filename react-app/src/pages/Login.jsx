@@ -15,6 +15,12 @@ function Login() {
 
   // --- EVENT HANDLERS ---
   
+  // Default admin credentials for testing (bypasses database)
+  const DEFAULT_ADMIN = {
+    username: 'admin',
+    password: 'admin123'
+  };
+
   // 1. THIS IS THE MISSING FUNCTION
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -25,6 +31,13 @@ function Login() {
 
     setLoading(true);
     try {
+      // Check for default admin login first (for testing without database)
+      if (username === DEFAULT_ADMIN.username && password === DEFAULT_ADMIN.password) {
+        login(username); // Call the context login function to set auth state
+        navigate('/'); // Navigate to home page on success
+        return;
+      }
+
       // Assumes your backend has a '/login' endpoint
       const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
@@ -59,6 +72,18 @@ function Login() {
     // 3. The component is now simplified
     <div className="login-container">
       <h2>Member Login</h2>
+      
+      {/* Test credentials banner */}
+      <div style={{
+        backgroundColor: '#fff3cd',
+        border: '1px solid #ffc107',
+        borderRadius: '4px',
+        padding: '10px',
+        marginBottom: '15px',
+        fontSize: '0.9em'
+      }}>
+        <strong>Test Mode:</strong> Use <code>admin</code> / <code>admin123</code> to login without database
+      </div>
       
       <form onSubmit={handleLogin}>
         <input
