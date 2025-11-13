@@ -46,7 +46,7 @@ function CreateAccount() {
     setLoading(true)
     try {
       // Use Supabase signUp (email + password)
-      const { data, error: signUpError } = await signUp(email, password)
+      const { data, error: signUpError } = await signUp(email, password, username)
 
       if (signUpError) {
         // Supabase returns helpful error messages
