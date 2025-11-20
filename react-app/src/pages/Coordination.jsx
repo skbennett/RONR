@@ -19,7 +19,7 @@ import {
   endCoordinationMotion,
   undoVoteOnCoordinationMotion
 } from '../services/dataManager';
-import './Coordination.css';
+import './coordination.css';
 
 // --- Helper Components (for better organization) ---
 
