@@ -3,30 +3,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  getUserMeetings,
-  fetchMeetingData,
-  proposeMotion,
-  vote,
-  sendChat,
-  subscribeToMeeting,
-  downloadMinutes
-} from '../services/supabaseDataManager';
-import {
   getCoordinationData,
-  updateCoordinationData
+  updateCoordinationData,
+  addCoordinationMotion,
+  addCoordinationSubMotion,
+  addCoordinationReply,
+  updateCoordinationReply,
+  deleteCoordinationReply,
+  updateCoordinationMotion,
+  startVotingForMotion,
+  voteOnCoordinationMotion,
+  postponeCoordinationMotion,
+  resumeLastPostponedCoordinationMotion,
+  resumeSpecificPostponedCoordinationMotion,
+  endCoordinationMotion,
+  undoVoteOnCoordinationMotion
 } from '../services/dataManager';
-import {
-  proposeSubMotion,
-  addReply,
-  updateReply,
-  deleteReply,
-  updateMotion,
-  postponeMotion,
-  resumeMotion,
-  endMotion,
-  undoVote
-} from '../services/supabaseDataManager';
-import './coordination.css';
+import './Coordination.css';
 
 // --- Helper Components (for better organization) ---
 
@@ -38,8 +31,6 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
   // dataManager stores per-user votes in `userVotes` (not votesByUser)
   const userVote = motion.userVotes ? motion.userVotes[currentUser] : undefined;
   const hasVoted = Boolean(userVote);
-  // defensive defaults: ensure votes object exists so rendering can't blow up
-  const votes = motion.votes || { for: 0, against: 0, abstain: 0 };
   const canUndo = isUndoAllowed ? isUndoAllowed(motion, currentUser) : hasVoted;
   return (
     <div className="motion-card">
@@ -58,12 +49,12 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
       <div className="motion-meta">
         Proposed by: {motion.createdBy} | {new Date(motion.createdAt).toLocaleString()}
       </div>
-      {(motion.status === 'voting' || motion.status === 'open') && (
+      {motion.status === 'voting' && (
         <div className="voting-section">
           <div className="vote-counts">
-            <div className="vote-count"><span>For:</span><span className="count">{votes.for}</span></div>
-            <div className="vote-count"><span>Against:</span><span className="count">{votes.against}</span></div>
-            <div className="vote-count"><span>Abstain:</span><span className="count">{votes.abstain}</span></div>
+            <div className="vote-count"><span>For:</span><span className="count">{motion.votes.for}</span></div>
+            <div className="vote-count"><span>Against:</span><span className="count">{motion.votes.against}</span></div>
+            <div className="vote-count"><span>Abstain:</span><span className="count">{motion.votes.abstain}</span></div>
           </div>
           <div className="vote-buttons">
             <button className={`vote-btn for${userVote === 'for' ? ' joined' : ''}`} onClick={() => onVote(motion.id, 'for')}>Vote For</button>
@@ -75,9 +66,9 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
       {motion.status === 'completed' && (
         <div className="completed-section">
           <div className="vote-counts">
-            <div className="vote-count"><span>For:</span><span className="count">{votes.for}</span></div>
-            <div className="vote-count"><span>Against:</span><span className="count">{votes.against}</span></div>
-            <div className="vote-count"><span>Abstain:</span><span className="count">{votes.abstain}</span></div>
+            <div className="vote-count"><span>For:</span><span className="count">{motion.votes.for}</span></div>
+            <div className="vote-count"><span>Against:</span><span className="count">{motion.votes.against}</span></div>
+            <div className="vote-count"><span>Abstain:</span><span className="count">{motion.votes.abstain}</span></div>
           </div>
           <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>Motion completed and moved to history.</p>
         </div>
@@ -90,17 +81,15 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
 // --- The Main Coordination Page Component ---
 function Coordination() {
   // --- STATE MANAGEMENT ---
-  const [selectedMeeting, setSelectedMeeting] = useState(null);
-  const [meetingsList, setMeetingsList] = useState([]);
+  const [currentSession, setCurrentSession] = useState(null);
   const [activeMotions, setActiveMotions] = useState([]);
   const [votingHistory, setVotingHistory] = useState([]);
-  const [currentSession, setCurrentSession] = useState(null);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [motionTitle, setMotionTitle] = useState('');
   const [motionDescription, setMotionDescription] = useState('');
   const [motionSpecial, setMotionSpecial] = useState(false);
   const { user } = useAuth();
-  const currentUser = user || null;
+  const currentUser = user || 'guest';
   const newMotionBtnRef = useRef(null);
   const motionTitleRef = useRef(null);
   // No client-side lock timers: votes finalize immediately server-side.
@@ -134,80 +123,21 @@ function Coordination() {
   };
   
   // --- DATA INITIALIZATION ---
-  // Helper: enrich motions with vote counts and default fields
-  const enrichMotions = (motions = [], votes = []) => {
-    const voteByMotion = {};
-    (votes || []).forEach(v => {
-      voteByMotion[v.motion_id] = voteByMotion[v.motion_id] || { yes: 0, no: 0, abstain: 0 };
-      voteByMotion[v.motion_id][v.choice] = (voteByMotion[v.motion_id][v.choice] || 0) + 1;
-    });
-    return (motions || []).map(m => ({
-      ...m,
-      votes: {
-        for: voteByMotion[m.id]?.yes || 0,
-        against: voteByMotion[m.id]?.no || 0,
-        abstain: voteByMotion[m.id]?.abstain || 0
-      },
-      replies: m.replies || []
-    }));
-  };
-
   useEffect(() => {
-    const load = async () => {
-      try {
-        const { data, error } = await getUserMeetings();
-        if (error) {
-          console.error('getUserMeetings error', error);
-          setMeetingsList([]);
-          return;
-        }
-        setMeetingsList(data || []);
-        if ((data || []).length > 0 && !selectedMeeting) setSelectedMeeting(data[0]);
-      } catch (e) {
-        console.error('Failed loading meetings', e);
-      }
-    };
-    load();
-  }, [user]);
-
-  // when a meeting is selected, fetch meeting data and subscribe to realtime
-  useEffect(() => {
-    if (!selectedMeeting) return;
-    let channel = null;
-    const loadMeeting = async () => {
-      try {
-        const md = await fetchMeetingData(selectedMeeting.id);
-        const { meeting, motions, votes, chats, history } = md || {};
-        // compute vote counts per motion
-        const voteByMotion = {};
-        (votes || []).forEach(v => {
-          voteByMotion[v.motion_id] = voteByMotion[v.motion_id] || { yes: 0, no: 0, abstain: 0 };
-          voteByMotion[v.motion_id][v.choice] = (voteByMotion[v.motion_id][v.choice] || 0) + 1;
-        });
-        const enriched = enrichMotions(motions, votes);
-        setActiveMotions(enriched);
-        setVotingHistory((history || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
-      } catch (e) {
-        console.error('fetchMeetingData failed', e);
-      }
-    };
-    loadMeeting();
-    channel = subscribeToMeeting(selectedMeeting.id, {
-      onMeeting: async () => await loadMeeting(),
-      onMotions: async () => await loadMeeting(),
-      onVotes: async () => await loadMeeting(),
-      onChats: async () => await loadMeeting(),
-      onAttendees: async () => await loadMeeting()
-    });
-    return () => { try { channel && channel.unsubscribe(); } catch (e) {} };
-  }, [selectedMeeting]);
+    const data = getCoordinationData();
+    if (data) {
+      setActiveMotions(data.activeMotions || []);
+      setVotingHistory(data.votingHistory || []);
+      setCurrentSession(data.currentSession || null);
+    }
+  }, []);
 
   // --- Sub-motion helpers & utilities ---
   // Utility: refresh local state from storage
   const refreshFromStorage = () => {
     const data = getCoordinationData();
-    setActiveMotions((data?.activeMotions || []).map(m => ({ ...m, votes: m.votes || { for: 0, against: 0, abstain: 0 }, replies: m.replies || [] })));
-    setVotingHistory((data?.votingHistory || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
+    setActiveMotions(data?.activeMotions || []);
+    setVotingHistory(data?.votingHistory || []);
     setCurrentSession(data?.currentSession || null);
   };
 
@@ -227,35 +157,21 @@ function Coordination() {
   const handleSubmitSubMotion = (parentId) => {
     const vals = subFormValues[parentId] || {};
     if (!vals.title || vals.title.trim() === '') { alert('Please enter a sub-motion title.'); return; }
-    (async () => {
+    const sub = addCoordinationSubMotion({ parentId, title: vals.title.trim(), description: (vals.description || '').trim(), sessionId: currentSession?.id, special: !!vals.special });
+    if (sub) {
+      // start voting immediately
+      startVotingForMotion(sub.id);
+      // postpone the parent so work focuses on the submotion first
       try {
-        const { data, error } = await proposeSubMotion(selectedMeeting.id, parentId, vals.title.trim(), (vals.description || '').trim());
-        console.log('proposeSubMotion result', { data, error });
-        if (error) {
-          console.error('proposeSubMotion error', error);
-          alert('Failed to add sub-motion: ' + (error.message || JSON.stringify(error)));
-          return;
-        }
-        // postpone the parent motion
-        await postponeMotion(parentId);
-        setReplyFormVisible(prev => ({ ...prev, [parentId]: false }));
-        cancelSubForm(parentId);
-        // refresh meeting data
-        const md = await fetchMeetingData(selectedMeeting.id);
-        const { motions, votes, history } = md || {};
-        const voteByMotion = {};
-        (votes || []).forEach(v => {
-          voteByMotion[v.motion_id] = voteByMotion[v.motion_id] || { yes: 0, no: 0, abstain: 0 };
-          voteByMotion[v.motion_id][v.choice] = (voteByMotion[v.motion_id][v.choice] || 0) + 1;
-        });
-        const enriched = (motions || []).map(m => ({ ...m, votes: { for: voteByMotion[m.id]?.yes || 0, against: voteByMotion[m.id]?.no || 0, abstain: voteByMotion[m.id]?.abstain || 0 }, replies: m.replies || [] }));
-        setActiveMotions(enriched);
-        setVotingHistory((history || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
-      } catch (e) {
-        console.error('Failed to add sub-motion', e);
-        alert('Failed to add sub-motion: ' + (e.message || JSON.stringify(e)));
-      }
-    })();
+        postponeCoordinationMotion(parentId);
+      } catch (e) { console.warn('failed to postpone parent motion', e); }
+      // close discussion area on parent while postponed
+      setReplyFormVisible(prev => ({ ...prev, [parentId]: false }));
+      cancelSubForm(parentId);
+      refreshFromStorage();
+    } else {
+      alert('Failed to add sub-motion.');
+    }
   };
 
   // --- Edit helpers ---
@@ -285,18 +201,13 @@ function Coordination() {
   const handleSubmitEdit = (motionId) => {
     const vals = editFormValues[motionId] || {};
     if (!vals.title || vals.title.trim() === '') { alert('Please enter a title.'); return; }
-    (async () => {
-      try {
-        const { data, error } = await updateMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
-        if (error) throw error;
-        cancelEditForm(motionId);
-        const md = await fetchMeetingData(selectedMeeting.id);
-        setActiveMotions(enrichMotions(md.motions, md.votes));
-      } catch (e) {
-        console.error('Failed to update motion', e);
-        alert('Failed to update motion.');
-      }
-    })();
+    const updated = updateCoordinationMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
+    if (updated) {
+      cancelEditForm(motionId);
+      refreshFromStorage();
+    } else {
+      alert('Failed to update motion.');
+    }
   };
 
   // --- Reply helpers ---
@@ -344,19 +255,15 @@ function Coordination() {
     if (!vals.text || vals.text.trim() === '') { alert('Please enter reply text.'); return; }
     // default missing stance to 'neutral' rather than showing a popup
     const stance = vals.stance || 'neutral';
-    (async () => {
-      try {
-        const { data, error } = await addReply(motionId, vals.text.trim(), stance, null);
-        if (error) throw error;
-        cancelReplyForm(motionId);
-        const md = await fetchMeetingData(selectedMeeting.id);
-        setActiveMotions(enrichMotions(md.motions, md.votes));
-        setVotingHistory((md.history || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
-      } catch (e) {
-        console.error('Failed to add reply', e);
-        alert('Failed to add reply.');
-      }
-    })();
+    const reply = addCoordinationReply({ motionId, parentReplyId: null, text: vals.text.trim(), stance });
+    if (reply) {
+      cancelReplyForm(motionId);
+      refreshFromStorage();
+      // mark todo complete for this small fix
+      try { window.__todo && window.__todo.markDone && window.__todo.markDone(3); } catch (e) {}
+    } else {
+      alert('Failed to add reply.');
+    }
   };
 
   // --- Reply edit/delete helpers ---
@@ -397,131 +304,91 @@ function Coordination() {
   const handleSubmitReplyEdit = (replyId) => {
     const vals = replyEditValues[replyId] || {};
     if (!vals.text || vals.text.trim() === '') { alert('Please enter reply text.'); return; }
-    (async () => {
-      try {
-        const { data, error } = await updateReply(replyId, vals.text.trim(), vals.stance);
-        if (error) throw error;
-        cancelReplyEdit(replyId);
-        const md = await fetchMeetingData(selectedMeeting.id);
-        setActiveMotions(enrichMotions(md.motions, md.votes));
-        setVotingHistory((md.history || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
-      } catch (e) {
-        console.error('Failed to update reply', e);
-        alert('Failed to update reply.');
-      }
-    })();
+    const ok = updateCoordinationReply(vals.motionId, replyId, { text: vals.text.trim(), stance: vals.stance });
+    if (!ok) { alert('Failed to update reply.'); return; }
+    cancelReplyEdit(replyId);
+    refreshFromStorage();
   };
   const handleDeleteReply = (motionId, replyId) => {
     if (!window.confirm('Delete this reply? This cannot be undone.')) return;
-    (async () => {
-      try {
-        const { data, error } = await deleteReply(replyId);
-        if (error) throw error;
-        const md = await fetchMeetingData(selectedMeeting.id);
-        setActiveMotions(enrichMotions(md.motions, md.votes));
-        setVotingHistory(md.history || []);
-      } catch (e) {
-        console.error('Failed to delete reply', e);
-        alert('Failed to delete reply.');
-      }
-    })();
+    const ok = deleteCoordinationReply(motionId, replyId);
+    if (!ok) { alert('Failed to delete reply.'); return; }
+    refreshFromStorage();
   };
 
   const handlePostpone = (motionId) => {
     if (!window.confirm('Postpone decision on this motion? It will be moved to a postponed stack.')) return;
-    (async () => {
-      try {
-        const { data, error } = await postponeMotion(motionId);
-        if (error) throw error;
-        setReplyFormVisible(prev => ({ ...prev, [motionId]: false }));
-        const md = await fetchMeetingData(selectedMeeting.id);
-        setActiveMotions(enrichMotions(md.motions, md.votes));
-      } catch (e) {
-        console.error('Failed to postpone', e);
-        alert('Failed to postpone motion.');
-      }
-    })();
+    if (postponeCoordinationMotion(motionId)) {
+      // close discussion area for postponed motion
+      setReplyFormVisible(prev => ({ ...prev, [motionId]: false }));
+      // refresh UI without extra popup
+      refreshFromStorage();
+    } else {
+      alert('Failed to postpone motion.');
+    }
   };
 
   const handleResumePostponed = () => {
-    (async () => {
-      try {
-        const md = await fetchMeetingData(selectedMeeting.id);
-        const postponed = (md.motions || []).filter(m => m.status === 'postponed').sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at));
-        if (!postponed.length) { alert('No postponed motions to resume.'); return; }
-        const resumed = postponed[0];
-        await resumeMotion(resumed.id);
-        const refreshed = await fetchMeetingData(selectedMeeting.id);
-        setActiveMotions(enrichMotions(refreshed.motions, refreshed.votes));
-        setReplyFormVisible(prev => ({ ...prev, [resumed.id]: false }));
-        alert(`Resumed motion: ${resumed.title}`);
-      } catch (e) {
-        console.error('Failed resume last postponed', e);
-        alert('Failed to resume postponed motion.');
-      }
-    })();
-  };
-
-  const handleResumeSpecific = async (motionId) => {
-    try {
-      if (selectedMeeting) {
-        // Server-backed resume: call RPC to set status/open the motion
-        const { data, error } = await resumeMotion(motionId);
-        console.log('resumeMotion result', { data, error });
-        if (error) {
-          console.error('resumeMotion error', error);
-          alert('Failed to resume motion: ' + (error.message || JSON.stringify(error)));
-          return;
-        }
-        // Refresh meeting data from server
-        const md = await fetchMeetingData(selectedMeeting.id);
-        setActiveMotions(enrichMotions(md.motions, md.votes));
-        setReplyFormVisible(prev => ({ ...prev, [motionId]: false }));
-        alert('Resumed motion');
-      } else {
-        // fallback to local dataManager resume for non-server meetings
-        const resumed = resumeSpecificPostponedCoordinationMotion(motionId);
-        if (resumed) {
-          startVotingForMotion(resumed.id);
-          setReplyFormVisible(prev => ({ ...prev, [resumed.id]: false }));
-          alert(`Resumed motion: ${resumed.title}`);
-          refreshFromStorage();
-        } else {
-          alert('Failed to resume this motion (it may not be postponed).');
-        }
-      }
-    } catch (e) {
-      console.error('handleResumeSpecific failed', e);
-      alert('Failed to resume motion: ' + (e.message || JSON.stringify(e)));
+    const resumed = resumeLastPostponedCoordinationMotion();
+    if (resumed) {
+      // Ensure voting state is started in storage and UI
+      startVotingForMotion(resumed.id);
+      // If the current user has an unfinalized vote on this motion, set a fresh undo deadline
+      const username = currentUser;
+      const data = getCoordinationData() || {};
+      const motion = (data.activeMotions || []).find(m => m.id === resumed.id);
+      // Votes finalize immediately in dataManager; just refresh UI
+  // keep discussion area closed on resume unless user explicitly opens it
+  setReplyFormVisible(prev => ({ ...prev, [resumed.id]: false }));
+      alert(`Resumed motion: ${resumed.title}`);
+      refreshFromStorage();
+    } else {
+      alert('No postponed motions to resume.');
     }
   };
 
-  const handleEndMotion = async (motionId) => {
+  const handleResumeSpecific = (motionId) => {
+    const resumed = resumeSpecificPostponedCoordinationMotion(motionId);
+    if (resumed) {
+      // ensure voting is active and persisted
+      startVotingForMotion(resumed.id);
+      // If the current user has an unfinalized vote on this motion, set a fresh undo deadline
+      const username = currentUser;
+      const data = getCoordinationData() || {};
+      const motion = (data.activeMotions || []).find(m => m.id === resumed.id);
+      // Votes finalize immediately in dataManager; just refresh UI
+  // keep discussion area closed on resume unless user explicitly opens it
+  setReplyFormVisible(prev => ({ ...prev, [resumed.id]: false }));
+      alert(`Resumed motion: ${resumed.title}`);
+      refreshFromStorage();
+    } else {
+      alert('Failed to resume this motion (it may not be postponed).');
+    }
+  };
+
+  const handleEndMotion = (motionId) => {
     if (!window.confirm('End this motion now and record the outcome based on current votes?')) return;
-    try {
-      // Call server RPC to finalize the motion (tallies, archives, outcomes)
-      const { data, error } = await endMotion(motionId);
-      console.log('endMotion rpc result', { data, error });
-      if (error) {
-        console.error('endMotion error', error);
-        alert('Failed to end motion: ' + (error.message || JSON.stringify(error)));
-        return;
-      }
-
-      // Refresh meeting data from server and update UI
-      const md = await fetchMeetingData(selectedMeeting.id);
-      setActiveMotions(enrichMotions(md.motions, md.votes));
-      setVotingHistory((md.history || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
-
-      // If the ended motion was a submotion, the server may have resumed its parent.
-      // After refresh we can optionally notify the user about the outcome.
-      if (data && data.outcome) {
-        alert(`Motion ended: ${data.outcome}`);
-      }
-    } catch (e) {
-      console.error('Failed to end motion', e);
-      alert('Failed to end motion: ' + (e.message || JSON.stringify(e)));
+    const ended = endCoordinationMotion(motionId);
+    if (!ended) {
+      alert('Failed to end motion.');
+      return;
     }
+    // No client-side timers to clear; refresh UI from storage
+    // If this was a submotion, resume its parent (if it was postponed)
+    if (ended.parentId) {
+      // attempt to resume the parent automatically when the submotion is finished
+      try {
+        const resumedParent = resumeSpecificPostponedCoordinationMotion(ended.parentId);
+        if (resumedParent) {
+          // ensure parent is in voting state and keep discussion closed (user must open it)
+          startVotingForMotion(resumedParent.id);
+          setReplyFormVisible(prev => ({ ...prev, [resumedParent.id]: false }));
+        }
+      } catch (e) {
+        console.warn('failed to resume parent motion after submotion ended', e);
+      }
+    }
+    refreshFromStorage();
   };
 
   // --- EVENT HANDLERS ---
@@ -550,39 +417,21 @@ function Coordination() {
     }
   };
 
-  const handleEndSession = async () => {
-    if (!window.confirm('Are you sure you want to end the current session? Active motions will be archived.')) return;
-    try {
-      // If a server-backed meeting is selected, call the RPC for each active motion
-      if (selectedMeeting) {
-        const md = await fetchMeetingData(selectedMeeting.id);
-        const ids = (md.motions || []).map(m => m.id);
-        for (const id of ids) {
-          try {
-            const { data, error } = await endMotion(id);
-            if (error) console.error('endMotion error for', id, error);
-            else console.log('endMotion result for', id, data);
-          } catch (e) {
-            console.error('Error ending motion', id, e);
-          }
+  const handleEndSession = () => {
+    if (window.confirm('Are you sure you want to end the current session? Active motions will be archived.')) {
+      // End each active motion using the canonical end function so outcomes
+      // are computed consistently (2/3 rule) and archived into history.
+      const data = getCoordinationData() || {};
+      const ids = (data.activeMotions || []).map(m => m.id);
+      ids.forEach(id => {
+        try {
+          endCoordinationMotion(id);
+        } catch (e) {
+          console.error('Error ending motion', id, e);
         }
-        const refreshed = await fetchMeetingData(selectedMeeting.id);
-        setActiveMotions(enrichMotions(refreshed.motions, refreshed.votes));
-        setVotingHistory((refreshed.history || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
-      } else {
-        // fallback: local dataManager flow
-        const data = getCoordinationData() || {};
-        const ids = (data.activeMotions || []).map(m => m.id);
-        ids.forEach(id => {
-          try {
-            endCoordinationMotion(id);
-          } catch (e) {
-            console.error('Error ending motion', id, e);
-          }
-        });
-        refreshFromStorage();
-      }
-
+      });
+      // Refresh from storage to pick up archived history and cleared active motions
+      refreshFromStorage();
       // clear session pointer
       updateCoordinationData({ currentSession: null });
       setCurrentSession(null);
@@ -591,79 +440,54 @@ function Coordination() {
       setMotionTitle('');
       setMotionDescription('');
       setMotionSpecial(false);
-    } catch (e) {
-      console.error('handleEndSession failed', e);
-      alert('Failed to end session: ' + (e.message || JSON.stringify(e)));
     }
   };
 
-  const handleSubmitMotion = async (e) => {
+  const handleSubmitMotion = (e) => {
     e.preventDefault();
-    if (!motionTitle) { alert('Please enter a motion title.'); return; }
-    if (!selectedMeeting) { alert('Select a meeting first.'); return; }
-    try {
-      const { data, error } = await proposeMotion(selectedMeeting.id, motionTitle, motionDescription);
-      console.log('proposeMotion result', { data, error });
-      if (error) {
-        console.error('proposeMotion error', error);
-        alert('Failed to propose motion: ' + (error.message || JSON.stringify(error)));
-        return;
-      }
-      // refresh meeting data
-      const md = await fetchMeetingData(selectedMeeting.id);
-      const { motions, votes, history } = md || {};
-      const voteByMotion = {};
-      (votes || []).forEach(v => {
-        voteByMotion[v.motion_id] = voteByMotion[v.motion_id] || { yes: 0, no: 0, abstain: 0 };
-        voteByMotion[v.motion_id][v.choice] = (voteByMotion[v.motion_id][v.choice] || 0) + 1;
-      });
-      const enriched = (motions || []).map(m => ({ ...m, votes: { for: voteByMotion[m.id]?.yes || 0, against: voteByMotion[m.id]?.no || 0, abstain: voteByMotion[m.id]?.abstain || 0 }, replies: m.replies || [] }));
-      setActiveMotions(enriched);
-      setVotingHistory((history || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
-      setMotionTitle(''); setMotionDescription(''); setMotionSpecial(false); setIsFormVisible(false);
-      setTimeout(() => newMotionBtnRef.current?.focus(), 0);
-    } catch (err) {
-      console.error('handleSubmitMotion caught', err);
-      alert('Failed to propose motion: ' + (err.message || JSON.stringify(err)));
+    if (!motionTitle) {
+      alert('Please enter a motion title.');
+      return;
     }
+    if (!currentSession) {
+      alert('No active session. Please start a session first.');
+      return;
+    }
+    const motion = addCoordinationMotion({ title: motionTitle, description: motionDescription, sessionId: currentSession.id, special: motionSpecial });
+    setActiveMotions(prev => [motion, ...prev]);
+    // Start voting immediately for the new motion and refresh UI
+    startVotingForMotion(motion.id);
+    const refreshed = getCoordinationData();
+    setActiveMotions(refreshed?.activeMotions || []);
+    // Reset form
+    setMotionTitle('');
+    setMotionDescription('');
+    setMotionSpecial(false);
+    setIsFormVisible(false);
+    // return focus to New Motion button for keyboard users
+    setTimeout(() => newMotionBtnRef.current?.focus(), 0);
   };
 
   const determineOutcome = (motion) => {
-    const forVotes = motion?.votes?.for || 0;
-    const againstVotes = motion?.votes?.against || 0;
-    const abstainVotes = motion?.votes?.abstain || 0;
-    const totalVotes = forVotes + againstVotes + abstainVotes;
+    const forVotes = motion.votes.for;
+    const againstVotes = motion.votes.against;
+    const totalVotes = forVotes + againstVotes + motion.votes.abstain;
     if (totalVotes < 1) return undefined;
     if (forVotes > againstVotes) return 'passed';
     if (againstVotes > forVotes) return 'failed';
     return undefined;
   };
 
-  const handleVote = async (motionId, voteType) => {
-    if (!currentUser) { alert('Sign in to vote'); return; }
-    const map = { for: 'yes', against: 'no', abstain: 'abstain' };
-    const choice = map[voteType];
-    try {
-      const { data, error } = await vote(motionId, choice);
-      console.log('vote result', { data, error });
-      if (error) {
-        console.error('vote error', error);
-        alert('Failed to cast vote: ' + (error.message || JSON.stringify(error)));
-        return;
-      }
-      const md = await fetchMeetingData(selectedMeeting.id);
-      const { motions, votes } = md || {};
-      const enriched = (motions || []).map(m => {
-        const v = (votes || []).filter(x => x.motion_id === m.id);
-        const counts = { for: 0, against: 0, abstain: 0 };
-        v.forEach(item => { if (item.choice === 'yes') counts.for++; else if (item.choice === 'no') counts.against++; else counts.abstain++; });
-        return { ...m, votes: counts };
-      });
-      setActiveMotions(enriched);
-    } catch (e) {
-      console.error(e);
-      alert('Failed to cast vote');
+  const handleVote = (motionId, voteType) => {
+    const username = currentUser;
+    if (!voteOnCoordinationMotion(motionId, voteType, username)) {
+      alert('You have already voted on this motion.');
+      return;
     }
+    const data = getCoordinationData();
+    setActiveMotions(data?.activeMotions || []);
+
+    // Votes are finalized immediately in dataManager; no client-side lock timer.
   };
 
   const handleUndoVote = () => {
@@ -681,7 +505,7 @@ function Coordination() {
     }
     // Refresh UI from storage after undo
     const data = getCoordinationData();
-    setActiveMotions((data?.activeMotions || []).map(m => ({ ...m, votes: m.votes || { for: 0, against: 0, abstain: 0 }, replies: m.replies || [] })));
+    setActiveMotions(data?.activeMotions || []);
     // update UI vote counts for the specific motion if present
     const motion = (data?.activeMotions || []).find(m => m.id === motionId);
     if (motion) {
@@ -692,7 +516,7 @@ function Coordination() {
   const handleDeleteHistory = (itemId) => {
     if (window.confirm('Are you sure you want to delete this history item?')) {
       const newHistory = votingHistory.filter(item => item.id !== itemId);
-      setVotingHistory((newHistory || []).map(h => ({ ...h, votes: h.votes || { for: 0, against: 0, abstain: 0 } })));
+      setVotingHistory(newHistory);
       // Persist deletion to storage so it doesn't reappear when motions are archived
       const data = getCoordinationData() || {};
       data.votingHistory = newHistory;
@@ -759,40 +583,6 @@ function Coordination() {
   return (
     <div className="coordination-container">
       <h2>Coordination Session</h2>
-
-      {/* --- Meeting Selector + Download --- */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <label style={{ fontWeight: 700 }}>Meeting:</label>
-        <select value={selectedMeeting?.id || ''} onChange={e => {
-          const id = e.target.value;
-          const m = meetingsList.find(x => x.id === id) || null;
-          setSelectedMeeting(m);
-        }}>
-          <option value="">-- Select Meeting --</option>
-          {meetingsList.map(m => (
-            <option key={m.id} value={m.id}>{m.title || m.id}</option>
-          ))}
-        </select>
-        <button className="secondary-btn" onClick={async () => {
-          if (!selectedMeeting) { alert('Select a meeting to download minutes.'); return; }
-          try {
-            const minutes = await downloadMinutes(selectedMeeting.id);
-            const blob = new Blob([JSON.stringify(minutes, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const safeTitle = (selectedMeeting.title || selectedMeeting.id).replace(/[^a-z0-9-_]/gi, '_');
-            a.download = `${safeTitle}-minutes.json`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-          } catch (e) {
-            console.error('Failed to download minutes', e);
-            alert('Failed to download minutes');
-          }
-        }} style={{ marginLeft: 8 }}>Download Minutes</button>
-      </div>
 
       {/* --- Session Status --- */}
       <section className="session-status">
@@ -876,9 +666,7 @@ function Coordination() {
                           >
                             Resume
                           </button>
-                          {selectedMeeting?.my_role === 'owner' && (
-                            <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
-                          )}
+                          <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
                         </>
                       ) : (
                         <>
@@ -893,29 +681,8 @@ function Coordination() {
                           >
                             Undo Vote
                           </button>
-                          {motion.status === 'voting' || motion.status === 'open' ? (
-                            selectedMeeting?.my_role === 'owner' ? (
-                              <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
-                            ) : null
-                          ) : (
-                            // when not in voting/open state, show Start Voting to owner
-                            selectedMeeting?.my_role === 'owner' && motion.status !== 'postponed' && motion.status !== 'passed' && motion.status !== 'failed' && (
-                              <button className="secondary-btn" onClick={async () => {
-                                try {
-                                  const { data, error } = await updateMotion(motion.id, { status: 'open' });
-                                  if (error) {
-                                    console.error('start voting error', error);
-                                    alert('Failed to start voting: ' + (error.message || JSON.stringify(error)));
-                                    return;
-                                  }
-                                  const md = await fetchMeetingData(selectedMeeting.id);
-                                  setActiveMotions(enrichMotions(md.motions, md.votes));
-                                } catch (e) {
-                                  console.error('Failed to start voting', e);
-                                  alert('Failed to start voting');
-                                }
-                              }}>Start Voting</button>
-                            )
+                          {motion.status === 'voting' && (
+                            <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
                           )}
                           <button className="secondary-btn" onClick={() => handlePostpone(motion.id)}>Postpone Decision</button>
                         </>
@@ -1087,7 +854,7 @@ function Coordination() {
                     </div>
                   </div>
               <div className="history-votes">
-                For: {item.votes?.for || 0} | Against: {item.votes?.against || 0} | Abstain: {item.votes?.abstain || 0}
+                For: {item.votes.for} | Against: {item.votes.against} | Abstain: {item.votes.abstain}
               </div>
 
               {/* Collapsible discussion area for archived motion */}
