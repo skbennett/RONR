@@ -124,6 +124,7 @@ function Coordination() {
         const vm = votesByMotion[mid] || { for: 0, against: 0, abstain: 0, userVotes: {}, voters: [] };
         itemsByKey[key] = {
           id: mid || h.id,
+          historyRowId: h.id,
           title: motion.title || ev.title || `Motion ${mid || h.id}`,
           status: ev.outcome || motion.status || 'closed',
           votes: { for: (ev.votes && (ev.votes.yes || ev.votes.for)) || vm.for || 0, against: (ev.votes && (ev.votes.no || ev.votes.against)) || vm.against || 0, abstain: (ev.votes && ev.votes.abstain) || vm.abstain || 0 },
@@ -145,6 +146,7 @@ function Coordination() {
         if (!itemsByKey[key] || itemsByKey[key]._kind !== 'closed') {
           itemsByKey[key] = {
             id: motion.id || h.id,
+            historyRowId: h.id,
             title: motion.title || `Motion ${motion.id || h.id}`,
             status: motion.status || 'proposed',
             votes: { for: vm.for || 0, against: vm.against || 0, abstain: vm.abstain || 0 },
@@ -164,12 +166,13 @@ function Coordination() {
       if (h.event_type === 'reply_added' && ev.reply) {
         const r = ev.reply;
         if (mid) {
-          itemsByKey[key] = itemsByKey[key] || { id: mid, title: motionById[mid]?.title || `Motion ${mid}`, status: 'closed', votes: votesByMotion[mid] || { for: 0, against: 0, abstain: 0 }, userVotes: (votesByMotion[mid] && votesByMotion[mid].userVotes) || {}, voters: (votesByMotion[mid] && votesByMotion[mid].voters) || [], replies: [], special: motionById[mid]?.special || false, created_at: h.created_at || h.createdAt, raw: h };
+          itemsByKey[key] = itemsByKey[key] || { id: mid, historyRowId: h.id, title: motionById[mid]?.title || `Motion ${mid}`, status: 'closed', votes: votesByMotion[mid] || { for: 0, against: 0, abstain: 0 }, userVotes: (votesByMotion[mid] && votesByMotion[mid].userVotes) || {}, voters: (votesByMotion[mid] && votesByMotion[mid].voters) || [], replies: [], special: motionById[mid]?.special || false, created_at: h.created_at || h.createdAt, raw: h };
           itemsByKey[key].replies = (itemsByKey[key].replies || []).concat(r);
         } else {
           // standalone reply/history entry
           itemsByKey[key] = itemsByKey[key] || {
             id: r.id || h.id,
+            historyRowId: h.id,
             title: `Reply: ${r.text?.slice(0,40) || ''}`,
             status: 'reply',
             votes: { for: 0, against: 0, abstain: 0 },
@@ -722,19 +725,78 @@ function Coordination() {
     }
   };
 
-  const handleDeleteHistory = (itemId) => {
+  const handleDeleteHistory = (historyRowId, itemId) => {
+    console.log('handleDeleteHistory called', { historyRowId, itemId });
     if (!window.confirm('Are you sure you want to delete this history item?')) return;
-    if (currentSession && typeof currentSession.id === 'string') {
-      (async () => {
-        try {
-          const { error } = await supabase.from('meeting_history').delete().match({ id: itemId });
+    if (!(currentSession && typeof currentSession.id === 'string')) {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
+      return;
+    }
+
+    (async () => {
+      try {
+        console.log('Delete flow start', { historyRowId, itemId, meeting: currentSession && currentSession.id });
+        if (historyRowId) {
+          // Log current auth user to detect permission/RLS issues
+          try {
+            const userInfo = await supabase.auth.getUser();
+            console.log('supabase auth.getUser()', userInfo);
+          } catch (e) { console.warn('auth.getUser failed', e); }
+
+          // Try selecting the exact row first to see if it's visible to the client
+          try {
+            const { data: selData, error: selErr } = await supabase.from('meeting_history').select('*').match({ id: historyRowId }).single();
+            console.log('select meeting_history by id', { selData, selErr });
+          } catch (e) { console.error('select by id failed', e); }
+
+          const { data: delData, error } = await supabase.from('meeting_history').delete().match({ id: historyRowId }).select();
+          console.log('delete by historyRowId result', { delData, error });
           if (error) { alert('Failed to delete history item'); console.error(error); return; }
           refreshFromStorage();
-        } catch (e) { console.error(e); alert('Failed to delete history item'); }
-      })();
-    } else {
-      alert('No active remote meeting. Sign in or ensure a meeting exists.');
-    }
+          return;
+        }
+
+        // Fallback: locate meeting_history rows for this meeting that reference the motion id in their event JSON
+        // We'll fetch meeting_history rows for the meeting and filter client-side for matches.
+        const { data: rows, error: selectErr } = await supabase.from('meeting_history').select('id,event').eq('meeting_id', currentSession.id);
+        console.log('fetched meeting_history rows', { count: (rows||[]).length, selectErr });
+        if (selectErr) { console.error('Failed to query meeting_history', selectErr); alert('Failed to delete history item'); return; }
+
+        const toDeleteIds = (rows || []).filter(r => {
+          const ev = r.event || {};
+          const mid = ev.motion_id || ev.motion?.id || ev.motionId || (ev.reply && (ev.reply.motion_id || ev.reply.motionId));
+          return mid === itemId;
+        }).map(r => r.id);
+
+        console.log('matched meeting_history ids to delete', toDeleteIds);
+
+        if (!toDeleteIds || toDeleteIds.length === 0) {
+          alert('No matching history rows found to delete.');
+          return;
+        }
+
+        // Delete all matching rows by id (batch)
+        try {
+          const { data: delDataBatch, error: delBatchErr } = await supabase.from('meeting_history').delete().in('id', toDeleteIds).select();
+          console.log('deleted history rows batch', { delDataBatch, delBatchErr });
+          if (delBatchErr) console.error('Failed to delete history rows batch', delBatchErr);
+        } catch (e) {
+          console.error('Error deleting history rows batch', e);
+          // fallback to per-row deletes
+          for (const id of toDeleteIds) {
+            try {
+              const { data: delData, error: delErr } = await supabase.from('meeting_history').delete().match({ id }).select();
+              console.log('deleted history row fallback', id, { delData, delErr });
+              if (delErr) console.error('Failed to delete history row', id, delErr);
+            } catch (ee) { console.error('Error deleting history row', id, ee); }
+          }
+        }
+        refreshFromStorage();
+      } catch (e) {
+        console.error(e);
+        alert('Failed to delete history item');
+      }
+    })();
   };
 
   // Allow a member who voted FOR a historical motion to overturn it (bring it back to active)

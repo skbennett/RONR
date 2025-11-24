@@ -30,7 +30,7 @@ const VotingHistory = ({ votingHistory, historyDiscussionOpen, historyVotersOpen
                 {(item.userVotes && ['for', 'pro'].includes(((item.userVotes[currentUser]||'') + '').toString().toLowerCase())) && (
                   <button className="primary-btn" onClick={() => handleOverturnHistory(item)}>Overturn</button>
                 )}
-                <button className="delete-history-btn" title="Delete this item" onClick={() => handleDeleteHistory(item.id)}>×</button>
+                <button className="delete-history-btn" title="Delete this item" onClick={() => handleDeleteHistory(item.historyRowId || null, item.id)}>×</button>
               </div>
             </div>
             <div className="history-votes">
