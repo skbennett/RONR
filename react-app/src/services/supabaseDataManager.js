@@ -138,7 +138,16 @@ export async function fetchMeetingData(meetingId) {
     votes = v || [];
   }
 
-  return { meeting, motions: motions || [], votes, chats: chats || [], history: history || [] };
+  // fetch motion replies and attach to motions
+  let replies = [];
+  if (motionIds.length) {
+    const { data: r } = await supabase.from('motion_replies').select('*').in('motion_id', motionIds).order('created_at', { ascending: true });
+    replies = r || [];
+  }
+
+  const motionsWithReplies = (motions || []).map(m => ({ ...m, replies: (replies || []).filter(rr => rr.motion_id === m.id) }));
+
+  return { meeting, motions: motionsWithReplies, votes, chats: chats || [], history: history || [] };
 }
 
 export async function proposeMotion(meetingId, title, description = '') {
@@ -328,7 +337,16 @@ export async function downloadMinutes(meetingId) {
     votes = v || [];
   }
 
-  const minutes = { meeting, motions, votes, chats, history };
+  // fetch motion replies and attach to motions
+  let replies = [];
+  if (motionIds.length) {
+    const { data: r } = await supabase.from('motion_replies').select('*').in('motion_id', motionIds).order('created_at', { ascending: true });
+    replies = r || [];
+  }
+
+  const motionsWithReplies = (motions || []).map(m => ({ ...m, replies: (replies || []).filter(rr => rr.motion_id === m.id) }));
+
+  const minutes = { meeting, motions: motionsWithReplies, votes, chats, history };
   return minutes;
 }
 
@@ -350,6 +368,7 @@ export default {
   inviteUser,
   acceptInvite,
   getUserMeetings,
+  fetchMeetingData,
   proposeMotion,
   proposeSubMotion,
   vote,

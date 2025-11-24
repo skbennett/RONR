@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
   const { user } = useAuth();
-  const currentUser = user || 'guest';
+  const currentUser = (user && (user.id || user)) || 'guest';
   const scheduledToArchiveRef = useRef(new Set());
   const userVote = motion.userVotes ? motion.userVotes[currentUser] : undefined;
   const hasVoted = Boolean(userVote);

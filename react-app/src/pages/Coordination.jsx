@@ -2,23 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  getCoordinationData,
-  updateCoordinationData,
-  addCoordinationMotion,
-  addCoordinationSubMotion,
-  addCoordinationReply,
-  updateCoordinationReply,
-  deleteCoordinationReply,
-  updateCoordinationMotion,
-  startVotingForMotion,
-  voteOnCoordinationMotion,
-  postponeCoordinationMotion,
-  resumeLastPostponedCoordinationMotion,
-  resumeSpecificPostponedCoordinationMotion,
-  endCoordinationMotion,
-  undoVoteOnCoordinationMotion
-} from '../services/dataManager';
+import sb from '../services/supabaseDataManager';
+import supabase from '../supabaseClient';
 import './coordination.css';
 import MotionCard from '../components/coordination/MotionCard';
 import MotionForm from '../components/coordination/MotionForm';
@@ -36,7 +21,8 @@ function Coordination() {
   const [motionDescription, setMotionDescription] = useState('');
   const [motionSpecial, setMotionSpecial] = useState(false);
   const { user } = useAuth();
-  const currentUser = user || 'guest';
+  // Normalize current user to a string id when available (supabase user.id), or fall back to 'guest' or local username
+  const currentUser = (user && (user.id || user)) || 'guest';
   const newMotionBtnRef = useRef(null);
   const motionTitleRef = useRef(null);
   // No client-side lock timers: votes finalize immediately server-side.
@@ -69,23 +55,271 @@ function Coordination() {
     setHistoryVotersOpen(prev => ({ ...prev, [id]: !prev[id] }));
   };
   
+  // Helper: map motions + votes (DB shape) into the frontend shape used by this page
+  const mapMotionsWithVotes = (motions, votes) => {
+    const votesByMotion = {};
+    (votes || []).forEach(v => {
+      const mid = v.motion_id || v.motionId || v.motion;
+      if (!mid) return;
+      votesByMotion[mid] = votesByMotion[mid] || { for: 0, against: 0, abstain: 0, userVotes: {}, voters: [] };
+      const choice = (v.choice || v.vote || '').toString().toLowerCase();
+      const userId = v.user_id || v.userId || v.user;
+      if (choice === 'yes') votesByMotion[mid].for++;
+      else if (choice === 'no') votesByMotion[mid].against++;
+      else votesByMotion[mid].abstain++;
+      if (userId) {
+        votesByMotion[mid].userVotes[userId] = choice === 'yes' ? 'for' : choice === 'no' ? 'against' : 'abstain';
+        if (!votesByMotion[mid].voters.includes(userId)) votesByMotion[mid].voters.push(userId);
+      }
+    });
+
+    return (motions || []).map(m => {
+      const vm = votesByMotion[m.id] || { for: 0, against: 0, abstain: 0, userVotes: {}, voters: [] };
+      return {
+        ...m,
+        // keep original db fields but normalize status to 'voting' for 'open'
+        status: m.status === 'open' ? 'voting' : m.status,
+        votes: { for: vm.for || 0, against: vm.against || 0, abstain: vm.abstain || 0 },
+        userVotes: vm.userVotes,
+        voters: vm.voters,
+        // ensure replies field exists (motions fetched separately in DB via motion_replies)
+        replies: m.replies || []
+      };
+    });
+  };
+
+  // Build a UI-friendly history list by merging history rows with motions and vote aggregates.
+  const normalizeHistoryItems = (history, motions = [], votes = []) => {
+    const motionById = {};
+    (motions || []).forEach(m => { if (m && m.id) motionById[m.id] = m; });
+
+    const votesByMotion = {};
+    (votes || []).forEach(v => {
+      const mid = v.motion_id || v.motionId || v.motion;
+      if (!mid) return;
+      votesByMotion[mid] = votesByMotion[mid] || { for: 0, against: 0, abstain: 0, userVotes: {}, voters: [] };
+      const choice = (v.choice || v.vote || '').toString().toLowerCase();
+      const userId = v.user_id || v.userId || v.user;
+      if (choice === 'yes') votesByMotion[mid].for++;
+      else if (choice === 'no') votesByMotion[mid].against++;
+      else votesByMotion[mid].abstain++;
+      if (userId) {
+        votesByMotion[mid].userVotes[userId] = choice === 'yes' ? 'for' : choice === 'no' ? 'against' : 'abstain';
+        if (!votesByMotion[mid].voters.includes(userId)) votesByMotion[mid].voters.push(userId);
+      }
+    });
+
+    // Build a map keyed by motion id (or history id for standalone events) and prefer a single representative
+    const itemsByKey = {};
+
+    (history || []).forEach(h => {
+      const ev = h.event || {};
+      // resolve a motion id if present
+      const mid = ev.motion_id || ev.motion?.id || ev.motionId || (ev.reply && (ev.reply.motion_id || ev.reply.motionId));
+      const key = mid || h.id;
+
+      // closed/ended motions are the canonical history entries we prefer
+      if (h.event_type === 'motion_closed' || ev.motion_id) {
+        const motion = motionById[mid] || ev.motion || {};
+        const vm = votesByMotion[mid] || { for: 0, against: 0, abstain: 0, userVotes: {}, voters: [] };
+        itemsByKey[key] = {
+          id: mid || h.id,
+          title: motion.title || ev.title || `Motion ${mid || h.id}`,
+          status: ev.outcome || motion.status || 'closed',
+          votes: { for: (ev.votes && (ev.votes.yes || ev.votes.for)) || vm.for || 0, against: (ev.votes && (ev.votes.no || ev.votes.against)) || vm.against || 0, abstain: (ev.votes && ev.votes.abstain) || vm.abstain || 0 },
+          userVotes: vm.userVotes || {},
+          voters: vm.voters || [],
+          replies: motion.replies || [],
+          special: motion.special || false,
+          created_at: h.created_at || h.createdAt,
+          raw: h,
+          _kind: 'closed'
+        };
+        return;
+      }
+
+      // Proposed motions: only add if we don't already have a closed entry for this motion
+      if (h.event_type === 'motion_proposed' && ev.motion) {
+        const motion = ev.motion;
+        const vm = votesByMotion[motion.id] || { for: 0, against: 0, abstain: 0, userVotes: {}, voters: [] };
+        if (!itemsByKey[key] || itemsByKey[key]._kind !== 'closed') {
+          itemsByKey[key] = {
+            id: motion.id || h.id,
+            title: motion.title || `Motion ${motion.id || h.id}`,
+            status: motion.status || 'proposed',
+            votes: { for: vm.for || 0, against: vm.against || 0, abstain: vm.abstain || 0 },
+            userVotes: vm.userVotes || {},
+            voters: vm.voters || [],
+            replies: motion.replies || [],
+            special: motion.special || false,
+            created_at: h.created_at || h.createdAt,
+            raw: h,
+            _kind: itemsByKey[key]?._kind || 'proposed'
+          };
+        }
+        return;
+      }
+
+      // Reply events: attach to the motion entry if possible, otherwise create a small reply entry
+      if (h.event_type === 'reply_added' && ev.reply) {
+        const r = ev.reply;
+        if (mid) {
+          itemsByKey[key] = itemsByKey[key] || { id: mid, title: motionById[mid]?.title || `Motion ${mid}`, status: 'closed', votes: votesByMotion[mid] || { for: 0, against: 0, abstain: 0 }, userVotes: (votesByMotion[mid] && votesByMotion[mid].userVotes) || {}, voters: (votesByMotion[mid] && votesByMotion[mid].voters) || [], replies: [], special: motionById[mid]?.special || false, created_at: h.created_at || h.createdAt, raw: h };
+          itemsByKey[key].replies = (itemsByKey[key].replies || []).concat(r);
+        } else {
+          // standalone reply/history entry
+          itemsByKey[key] = itemsByKey[key] || {
+            id: r.id || h.id,
+            title: `Reply: ${r.text?.slice(0,40) || ''}`,
+            status: 'reply',
+            votes: { for: 0, against: 0, abstain: 0 },
+            userVotes: {},
+            voters: [],
+            replies: [r],
+            created_at: h.created_at || h.createdAt,
+            raw: h
+          };
+        }
+        return;
+      }
+
+      // Fallback: keep one entry per history id if nothing else matched
+      if (!itemsByKey[key]) {
+        itemsByKey[key] = {
+          id: h.id,
+          title: (typeof ev === 'string' ? ev : (ev.title || ev.motion?.title || h.event_type)),
+          status: h.event_type,
+          votes: { for: 0, against: 0, abstain: 0 },
+          userVotes: {},
+          voters: [],
+          replies: [],
+          created_at: h.created_at || h.createdAt,
+          raw: h
+        };
+      }
+    });
+
+    // Convert to array and sort by created_at desc (newest first). Remove internal _kind markers.
+    const items = Object.values(itemsByKey).map(it => {
+      const copy = { ...it };
+      delete copy._kind;
+      return copy;
+    }).sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+
+    return items;
+  };
+
+  // Filter mapped motions to the subset that should be shown as "active".
+  // Include motions whose status is 'voting' or 'postponed', and any ancestors
+  // (parents) needed to preserve the motion tree for active sub-motions.
+  const filterActiveMotions = (mapped) => {
+    const active = new Set((mapped || []).filter(m => ['voting', 'postponed'].includes(m.status)).map(m => m.id));
+    // include ancestors of active motions
+    let added = true;
+    while (added) {
+      added = false;
+      for (const m of (mapped || [])) {
+        if (m.parentId && active.has(m.id) && !active.has(m.parentId)) {
+          active.add(m.parentId);
+          added = true;
+        }
+      }
+    }
+    return (mapped || []).filter(m => active.has(m.id));
+  };
+
   // --- DATA INITIALIZATION ---
   useEffect(() => {
-    const data = getCoordinationData();
-    if (data) {
-      setActiveMotions(data.activeMotions || []);
-      setVotingHistory(data.votingHistory || []);
-      setCurrentSession(data.currentSession || null);
-    }
-  }, []);
+    const init = async () => {
+      // If user is signed in, prefer opening a meeting they own automatically
+      try {
+        if (user && user.id) {
+          const { data: userMeetings, error } = await sb.getUserMeetings();
+          if (!error && Array.isArray(userMeetings)) {
+            // prefer meetings where the signed-in user is the owner
+            const owned = userMeetings.find(m => (m.owner && m.owner === user.id) || (m.my_role && m.my_role === 'owner'));
+            if (owned) {
+              const sess = { id: owned.id, name: owned.title || owned.name || `Meeting ${owned.id}`, startTime: owned.created_at || new Date().toISOString() };
+              setCurrentSession(sess);
+              const res = await sb.fetchMeetingData(sess.id);
+              const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
+              setActiveMotions(filterActiveMotions(mapped));
+              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+              setCurrentSession(res.meeting || sess);
+              return;
+            }
+            // If user has meetings but none owned, pick the first they participate in
+            if ((userMeetings || []).length > 0) {
+              const first = userMeetings[0];
+              const sess = { id: first.id, name: first.title || first.name || `Meeting ${first.id}`, startTime: first.created_at || new Date().toISOString() };
+              const res = await sb.fetchMeetingData(sess.id);
+              const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
+              setCurrentSession(res.meeting || sess);
+              setActiveMotions(filterActiveMotions(mapped));
+              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+              return;
+            }
+            // If the user has no meetings at all, create one automatically so coordination works
+            const { data: created, error: createErr } = await sb.createMeeting({ title: `Meeting ${user.id.substring(0,8)}`, description: '' });
+            if (!createErr && created && created.id) {
+              const sess = { id: created.id, name: created.title || `Meeting ${created.id}`, startTime: created.created_at || new Date().toISOString() };
+              const res = await sb.fetchMeetingData(sess.id);
+              const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
+              setCurrentSession(res.meeting || sess);
+              setActiveMotions(filterActiveMotions(mapped));
+              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('auto-open owned meeting failed', e);
+      }
+      // If we reach here and haven't returned, there's no meeting selected; leave UI empty.
+    };
+    init();
+  }, [user]);
+
+  // Subscribe to realtime meeting events for the active session so UI stays in sync
+  useEffect(() => {
+    if (!currentSession || typeof currentSession.id !== 'string') return undefined;
+    const channel = sb.subscribeToMeeting(currentSession.id, {
+      onMeeting: () => refreshFromStorage(),
+      onMotions: () => refreshFromStorage(),
+      onVotes: () => refreshFromStorage(),
+      onChats: () => refreshFromStorage(),
+      onAttendees: () => refreshFromStorage()
+    });
+
+    return () => {
+      try {
+        if (channel && typeof channel.unsubscribe === 'function') channel.unsubscribe();
+      } catch (e) { /* ignore */ }
+    };
+  }, [currentSession && currentSession.id]);
 
   // --- Sub-motion helpers & utilities ---
   // Utility: refresh local state from storage
   const refreshFromStorage = () => {
-    const data = getCoordinationData();
-    setActiveMotions(data?.activeMotions || []);
-    setVotingHistory(data?.votingHistory || []);
-    setCurrentSession(data?.currentSession || null);
+    // Always refresh from Supabase when a currentSession exists
+    const sess = currentSession;
+    if (sess && typeof sess.id === 'string') {
+      (async () => {
+        try {
+          const res = await sb.fetchMeetingData(sess.id);
+          const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
+          setActiveMotions(filterActiveMotions(mapped));
+          setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+          setCurrentSession(res.meeting || sess);
+        } catch (e) {
+          console.error('refreshFromStorage failed', e);
+        }
+      })();
+    }
   };
 
   const showSubForm = (id) => setSubFormVisible(prev => ({ ...prev, [id]: true }));
@@ -104,20 +338,19 @@ function Coordination() {
   const handleSubmitSubMotion = (parentId) => {
     const vals = subFormValues[parentId] || {};
     if (!vals.title || vals.title.trim() === '') { alert('Please enter a sub-motion title.'); return; }
-    const sub = addCoordinationSubMotion({ parentId, title: vals.title.trim(), description: (vals.description || '').trim(), sessionId: currentSession?.id, special: !!vals.special });
-    if (sub) {
-      // start voting immediately
-      startVotingForMotion(sub.id);
-      // postpone the parent so work focuses on the submotion first
-      try {
-        postponeCoordinationMotion(parentId);
-      } catch (e) { console.warn('failed to postpone parent motion', e); }
-      // close discussion area on parent while postponed
-      setReplyFormVisible(prev => ({ ...prev, [parentId]: false }));
-      cancelSubForm(parentId);
-      refreshFromStorage();
+    // remote if currentSession looks like a meeting id
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.proposeSubMotion(currentSession.id, parentId, vals.title.trim(), (vals.description || '').trim());
+        if (error) { alert('Failed to add sub-motion.'); console.error(error); return; }
+        // postpone the parent motion on the server
+        try { await sb.postponeMotion(parentId); } catch (e) { console.warn('failed to postpone parent motion', e); }
+        setReplyFormVisible(prev => ({ ...prev, [parentId]: false }));
+        cancelSubForm(parentId);
+        refreshFromStorage();
+      })();
     } else {
-      alert('Failed to add sub-motion.');
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
   };
 
@@ -148,12 +381,15 @@ function Coordination() {
   const handleSubmitEdit = (motionId) => {
     const vals = editFormValues[motionId] || {};
     if (!vals.title || vals.title.trim() === '') { alert('Please enter a title.'); return; }
-    const updated = updateCoordinationMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
-    if (updated) {
-      cancelEditForm(motionId);
-      refreshFromStorage();
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.updateMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
+        if (error) { alert('Failed to update motion.'); console.error(error); return; }
+        cancelEditForm(motionId);
+        refreshFromStorage();
+      })();
     } else {
-      alert('Failed to update motion.');
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
   };
 
@@ -202,14 +438,15 @@ function Coordination() {
     if (!vals.text || vals.text.trim() === '') { alert('Please enter reply text.'); return; }
     // default missing stance to 'neutral' rather than showing a popup
     const stance = vals.stance || 'neutral';
-    const reply = addCoordinationReply({ motionId, parentReplyId: null, text: vals.text.trim(), stance });
-    if (reply) {
-      cancelReplyForm(motionId);
-      refreshFromStorage();
-      // mark todo complete for this small fix
-      try { window.__todo && window.__todo.markDone && window.__todo.markDone(3); } catch (e) {}
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.addReply(motionId, vals.text.trim(), stance, null);
+        if (error) { alert('Failed to add reply.'); console.error(error); return; }
+        cancelReplyForm(motionId);
+        refreshFromStorage();
+      })();
     } else {
-      alert('Failed to add reply.');
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
   };
 
@@ -251,100 +488,121 @@ function Coordination() {
   const handleSubmitReplyEdit = (replyId) => {
     const vals = replyEditValues[replyId] || {};
     if (!vals.text || vals.text.trim() === '') { alert('Please enter reply text.'); return; }
-    const ok = updateCoordinationReply(vals.motionId, replyId, { text: vals.text.trim(), stance: vals.stance });
-    if (!ok) { alert('Failed to update reply.'); return; }
-    cancelReplyEdit(replyId);
-    refreshFromStorage();
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.updateReply(replyId, vals.text.trim(), vals.stance);
+        if (error) { alert('Failed to update reply.'); console.error(error); return; }
+        cancelReplyEdit(replyId);
+        refreshFromStorage();
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
+    }
   };
   const handleDeleteReply = (motionId, replyId) => {
     if (!window.confirm('Delete this reply? This cannot be undone.')) return;
-    const ok = deleteCoordinationReply(motionId, replyId);
-    if (!ok) { alert('Failed to delete reply.'); return; }
-    refreshFromStorage();
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.deleteReply(replyId);
+        if (error) { alert('Failed to delete reply.'); console.error(error); return; }
+        refreshFromStorage();
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
+    }
   };
 
   const handlePostpone = (motionId) => {
     if (!window.confirm('Postpone decision on this motion? It will be moved to a postponed stack.')) return;
-    if (postponeCoordinationMotion(motionId)) {
-      // close discussion area for postponed motion
-      setReplyFormVisible(prev => ({ ...prev, [motionId]: false }));
-      // refresh UI without extra popup
-      refreshFromStorage();
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.postponeMotion(motionId);
+        if (error) { alert('Failed to postpone motion.'); console.error(error); return; }
+        setReplyFormVisible(prev => ({ ...prev, [motionId]: false }));
+        refreshFromStorage();
+      })();
     } else {
-      alert('Failed to postpone motion.');
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
   };
 
   const handleResumePostponed = () => {
-    const resumed = resumeLastPostponedCoordinationMotion();
-    if (resumed) {
-      // Ensure voting state is started in storage and UI
-      startVotingForMotion(resumed.id);
-      // If the current user has an unfinalized vote on this motion, set a fresh undo deadline
-      const username = currentUser;
-      const data = getCoordinationData() || {};
-      const motion = (data.activeMotions || []).find(m => m.id === resumed.id);
-      // Votes finalize immediately in dataManager; just refresh UI
-  // keep discussion area closed on resume unless user explicitly opens it
-  setReplyFormVisible(prev => ({ ...prev, [resumed.id]: false }));
-      alert(`Resumed motion: ${resumed.title}`);
-      refreshFromStorage();
+    // Remote: find last postponed motion for this meeting and resume it
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        try {
+          const data = await sb.fetchMeetingData(currentSession.id);
+          const postponed = (data.motions || []).filter(m => m.status === 'postponed');
+          if (!postponed || postponed.length === 0) { alert('No postponed motions to resume.'); return; }
+          const last = postponed[postponed.length - 1];
+          const { data: resumed, error } = await sb.resumeMotion(last.id);
+          if (error) { alert('Failed to resume motion.'); console.error(error); return; }
+          setReplyFormVisible(prev => ({ ...prev, [last.id]: false }));
+          alert(`Resumed motion: ${last.title}`);
+          refreshFromStorage();
+        } catch (e) {
+          console.error(e);
+          alert('Failed to resume postponed motion.');
+        }
+      })();
     } else {
-      alert('No postponed motions to resume.');
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
   };
 
   const handleResumeSpecific = (motionId) => {
-    const resumed = resumeSpecificPostponedCoordinationMotion(motionId);
-    if (resumed) {
-      // ensure voting is active and persisted
-      startVotingForMotion(resumed.id);
-      // If the current user has an unfinalized vote on this motion, set a fresh undo deadline
-      const username = currentUser;
-      const data = getCoordinationData() || {};
-      const motion = (data.activeMotions || []).find(m => m.id === resumed.id);
-      // Votes finalize immediately in dataManager; just refresh UI
-  // keep discussion area closed on resume unless user explicitly opens it
-  setReplyFormVisible(prev => ({ ...prev, [resumed.id]: false }));
-      alert(`Resumed motion: ${resumed.title}`);
-      refreshFromStorage();
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.resumeMotion(motionId);
+        if (error) { alert('Failed to resume this motion (it may not be postponed).'); console.error(error); return; }
+        setReplyFormVisible(prev => ({ ...prev, [data.id]: false }));
+        alert(`Resumed motion: ${data.title}`);
+        refreshFromStorage();
+      })();
     } else {
-      alert('Failed to resume this motion (it may not be postponed).');
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
   };
 
   const handleEndMotion = (motionId) => {
     if (!window.confirm('End this motion now and record the outcome based on current votes?')) return;
-    const ended = endCoordinationMotion(motionId);
-    if (!ended) {
-      alert('Failed to end motion.');
-      return;
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.endMotion(motionId);
+        if (error) { alert('Failed to end motion.'); console.error(error); return; }
+        // try to resume parent if provided in event (not guaranteed)
+        // refresh UI
+        refreshFromStorage();
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
-    // No client-side timers to clear; refresh UI from storage
-    // If this was a submotion, resume its parent (if it was postponed)
-    if (ended.parentId) {
-      // attempt to resume the parent automatically when the submotion is finished
-      try {
-        const resumedParent = resumeSpecificPostponedCoordinationMotion(ended.parentId);
-        if (resumedParent) {
-          // ensure parent is in voting state and keep discussion closed (user must open it)
-          startVotingForMotion(resumedParent.id);
-          setReplyFormVisible(prev => ({ ...prev, [resumedParent.id]: false }));
-        }
-      } catch (e) {
-        console.warn('failed to resume parent motion after submotion ended', e);
-      }
-    }
-    refreshFromStorage();
   };
 
   // --- EVENT HANDLERS ---
   const handleStartSession = () => {
     const sessionName = prompt('Enter session name:', `Session ${new Date().toLocaleDateString()}`);
     if (sessionName) {
-      const newSession = { id: Date.now(), name: sessionName, startTime: new Date().toISOString() };
-      setCurrentSession(newSession);
-      updateCoordinationData({ currentSession: newSession });
+      if (!user || !user.id) {
+        alert('Sign in to create or join a meeting.');
+        return;
+      }
+      (async () => {
+        try {
+          const { data, error } = await sb.createMeeting({ title: sessionName, description: '' });
+          if (error || !data) { alert('Failed to create meeting'); console.error(error); return; }
+          const sess = { id: data.id, name: data.title || sessionName, startTime: data.created_at || new Date().toISOString() };
+          setCurrentSession(sess);
+          // load meeting
+          const res = await sb.fetchMeetingData(sess.id);
+          const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
+          setActiveMotions(mapped);
+          setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+        } catch (e) {
+          console.error('create meeting failed', e);
+          alert('Failed to create meeting');
+        }
+      })();
     }
   };
 
@@ -368,19 +626,20 @@ function Coordination() {
     if (window.confirm('Are you sure you want to end the current session? Active motions will be archived.')) {
       // End each active motion using the canonical end function so outcomes
       // are computed consistently (2/3 rule) and archived into history.
-      const data = getCoordinationData() || {};
-      const ids = (data.activeMotions || []).map(m => m.id);
-      ids.forEach(id => {
-        try {
-          endCoordinationMotion(id);
-        } catch (e) {
-          console.error('Error ending motion', id, e);
-        }
-      });
-      // Refresh from storage to pick up archived history and cleared active motions
-      refreshFromStorage();
+      if (currentSession && typeof currentSession.id === 'string') {
+        // For remote meetings, call endMotion RPC for each open/postponed motion
+        (async () => {
+          try {
+            const data = await sb.fetchMeetingData(currentSession.id);
+            const ids = (data.motions || []).map(m => m.id);
+            for (const id of ids) {
+              try { await sb.endMotion(id); } catch (e) { console.error('Error ending motion', id, e); }
+            }
+          } catch (e) { console.error('Failed to fetch meeting motions to end', e); }
+          refreshFromStorage();
+        })();
+      }
       // clear session pointer
-      updateCoordinationData({ currentSession: null });
       setCurrentSession(null);
       // close and reset the 'Propose a New Motion' form so UI is clean after ending session
       setIsFormVisible(false);
@@ -400,19 +659,21 @@ function Coordination() {
       alert('No active session. Please start a session first.');
       return;
     }
-    const motion = addCoordinationMotion({ title: motionTitle, description: motionDescription, sessionId: currentSession.id, special: motionSpecial });
-    setActiveMotions(prev => [motion, ...prev]);
-    // Start voting immediately for the new motion and refresh UI
-    startVotingForMotion(motion.id);
-    const refreshed = getCoordinationData();
-    setActiveMotions(refreshed?.activeMotions || []);
-    // Reset form
-    setMotionTitle('');
-    setMotionDescription('');
-    setMotionSpecial(false);
-    setIsFormVisible(false);
-    // return focus to New Motion button for keyboard users
-    setTimeout(() => newMotionBtnRef.current?.focus(), 0);
+      if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.proposeMotion(currentSession.id, motionTitle, motionDescription || '');
+        if (error) { alert('Failed to propose motion.'); console.error(error); return; }
+        // refresh list
+        refreshFromStorage();
+        setMotionTitle('');
+        setMotionDescription('');
+        setMotionSpecial(false);
+        setIsFormVisible(false);
+        setTimeout(() => newMotionBtnRef.current?.focus(), 0);
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
+    }
   };
 
   const determineOutcome = (motion) => {
@@ -426,15 +687,19 @@ function Coordination() {
   };
 
   const handleVote = (motionId, voteType) => {
-    const username = currentUser;
-    if (!voteOnCoordinationMotion(motionId, voteType, username)) {
-      alert('You have already voted on this motion.');
-      return;
+    // Map front-end vote types ('for'|'against'|'abstain') to DB choices ('yes'|'no'|'abstain')
+    const map = { for: 'yes', against: 'no', abstain: 'abstain' };
+    const choice = map[voteType];
+    if (!choice) return;
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        const { data, error } = await sb.vote(motionId, choice);
+        if (error) { alert('You have already voted on this motion or an error occurred.'); console.error(error); return; }
+        refreshFromStorage();
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
-    const data = getCoordinationData();
-    setActiveMotions(data?.activeMotions || []);
-
-    // Votes are finalized immediately in dataManager; no client-side lock timer.
   };
 
   const handleUndoVote = () => {
@@ -444,30 +709,31 @@ function Coordination() {
   // New: functional undo that calls dataManager undo and refreshes UI
   const handleUndoVoteFunctional = (motionId, username) => {
     // Perform undo silently (no popups). If unable to undo, fail silently.
-    const ok = undoVoteOnCoordinationMotion(motionId, username);
-    if (!ok) {
-      // couldn't undo (likely locked or not in voting state) — do nothing visible
-      console.warn('undoVoteOnCoordinationMotion returned false for', motionId, username);
-      return;
-    }
-    // Refresh UI from storage after undo
-    const data = getCoordinationData();
-    setActiveMotions(data?.activeMotions || []);
-    // update UI vote counts for the specific motion if present
-    const motion = (data?.activeMotions || []).find(m => m.id === motionId);
-    if (motion) {
-      setActiveMotions(prev => prev.map(m => m.id === motionId ? motion : m));
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        try {
+          const { error } = await sb.undoVote(motionId);
+          if (error) { console.warn('undoVote failed', error); return; }
+          refreshFromStorage();
+        } catch (e) { console.warn('undoVote error', e); }
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
   };
 
   const handleDeleteHistory = (itemId) => {
-    if (window.confirm('Are you sure you want to delete this history item?')) {
-      const newHistory = votingHistory.filter(item => item.id !== itemId);
-      setVotingHistory(newHistory);
-      // Persist deletion to storage so it doesn't reappear when motions are archived
-      const data = getCoordinationData() || {};
-      data.votingHistory = newHistory;
-      updateCoordinationData({ votingHistory: newHistory });
+    if (!window.confirm('Are you sure you want to delete this history item?')) return;
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        try {
+          const { error } = await supabase.from('meeting_history').delete().match({ id: itemId });
+          if (error) { alert('Failed to delete history item'); console.error(error); return; }
+          refreshFromStorage();
+        } catch (e) { console.error(e); alert('Failed to delete history item'); }
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
     }
   };
 
@@ -477,45 +743,41 @@ function Coordination() {
       alert('You must be logged in to overturn a decision.');
       return;
     }
-    const vote = (item.userVotes && item.userVotes[currentUser]) || '';
-    const votedFor = ['for', 'pro'].includes(vote.toString().toLowerCase());
+    const uid = (user && user.id) || currentUser;
+    const vote = (item.userVotes && item.userVotes[uid]) || '';
+    const votedFor = ['for', 'pro'].includes((vote + '').toString().toLowerCase());
     if (!votedFor) {
       alert('Only members who voted in favor of this motion can overturn the decision.');
       return;
     }
     if (!window.confirm('Bring this motion back to active motions for a new vote?')) return;
-
-    const data = getCoordinationData() || {};
-    const newHistory = (data.votingHistory || []).filter(h => h.id !== item.id);
-
-    // Prepare revived motion: reset live voting state but keep previous outcome for audit
-    const revived = {
-      ...item,
-      status: 'voting',
-      // store previous votes for reference
-      previousOutcome: item.status,
-      previousVotes: item.votes,
-      votes: { for: 0, against: 0, abstain: 0 },
-      userVotes: {},
-      voters: [],
-      // remove archival timestamps so this becomes a fresh motion
-      votingStartTime: new Date().toISOString(),
-      endTime: undefined,
-      resumedFromHistory: item.id,
-      resumedAt: new Date().toISOString(),
-    };
-
-    const newActive = [revived, ...(data.activeMotions || [])];
-    updateCoordinationData({ activeMotions: newActive, votingHistory: newHistory });
-    // Start voting for revived motion
-    try { startVotingForMotion(revived.id); } catch (e) { console.warn('startVotingForMotion failed', e); }
-    refreshFromStorage();
+    if (currentSession && typeof currentSession.id === 'string') {
+      // create a new motion to represent the revived one
+      (async () => {
+        try {
+          const { data: newMotion, error } = await sb.proposeMotion(currentSession.id, item.title, item.description || '');
+          if (error) { alert('Failed to revive motion'); console.error(error); return; }
+          refreshFromStorage();
+        } catch (e) { console.error(e); alert('Failed to revive motion'); }
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
+    }
   };
 
   const handleClearHistory = () => {
     if (!window.confirm('Clear all voting history? This cannot be undone.')) return;
-    setVotingHistory([]);
-    updateCoordinationData({ votingHistory: [] });
+    if (currentSession && typeof currentSession.id === 'string') {
+      (async () => {
+        try {
+          const { error } = await supabase.from('meeting_history').delete().match({ meeting_id: currentSession.id });
+          if (error) { alert('Failed to clear history'); console.error(error); return; }
+          refreshFromStorage();
+        } catch (e) { console.error(e); alert('Failed to clear history'); }
+      })();
+    } else {
+      alert('No active remote meeting. Sign in or ensure a meeting exists.');
+    }
   };
 
   // Determine if undo is allowed for a given motion and username during the grace period
@@ -544,6 +806,7 @@ function Coordination() {
               <div>
                 <button ref={newMotionBtnRef} className="primary-btn" onClick={handleToggleNewMotion}>New Motion</button>
                 <button className="secondary-btn" onClick={handleEndSession} style={{marginLeft: '10px'}}>End Session</button>
+                {/* Manual connect/create removed — meetings are created/selected automatically for signed-in users */}
               </div>
             </>
           ) : (
