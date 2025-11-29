@@ -725,79 +725,45 @@ function Coordination() {
     }
   };
 
-  const handleDeleteHistory = (historyRowId, itemId) => {
-    console.log('handleDeleteHistory called', { historyRowId, itemId });
-    if (!window.confirm('Are you sure you want to delete this history item?')) return;
-    if (!(currentSession && typeof currentSession.id === 'string')) {
-      alert('No active remote meeting. Sign in or ensure a meeting exists.');
+const handleDeleteHistory = async (historyRowId, itemId) => {
+  console.log('handleDeleteHistory called', { historyRowId, itemId });
+
+  if (!window.confirm('Are you sure you want to delete this history item?')) return;
+  
+  if (!(currentSession && typeof currentSession.id === 'string')) {
+    alert('No active remote meeting. Sign in or ensure a meeting exists.');
+    return;
+  }
+
+  try {
+    // ---------------------------------------------------------
+    // SCENARIO 1: We have the specific Row ID (Fastest)
+    // ---------------------------------------------------------
+    if (historyRowId) {
+      // We simply attempt to delete. 
+      // The RLS policy "history_delete_motion" will automatically check 
+      // if the meeting belonging to this history item is owned by you.
+      const { error, count } = await supabase
+        .from('meeting_history')
+        .delete({ count: 'exact' }) 
+        .eq('id', historyRowId);
+
+      if (error) throw error;
+      
+      // If count is 0, it means the ID didn't exist OR RLS blocked it silently
+      if (count === 0) {
+        console.warn("Item not deleted. Either it doesn't exist or you lack RLS permission.");
+      } else {
+        console.log('Successfully deleted row', historyRowId);
+        refreshFromStorage();
+      }
       return;
     }
-
-    (async () => {
-      try {
-        console.log('Delete flow start', { historyRowId, itemId, meeting: currentSession && currentSession.id });
-        if (historyRowId) {
-          // Log current auth user to detect permission/RLS issues
-          try {
-            const userInfo = await supabase.auth.getUser();
-            console.log('supabase auth.getUser()', userInfo);
-          } catch (e) { console.warn('auth.getUser failed', e); }
-
-          // Try selecting the exact row first to see if it's visible to the client
-          try {
-            const { data: selData, error: selErr } = await supabase.from('meeting_history').select('*').match({ id: historyRowId }).single();
-            console.log('select meeting_history by id', { selData, selErr });
-          } catch (e) { console.error('select by id failed', e); }
-
-          const { data: delData, error } = await supabase.from('meeting_history').delete().match({ id: historyRowId }).select();
-          console.log('delete by historyRowId result', { delData, error });
-          if (error) { alert('Failed to delete history item'); console.error(error); return; }
-          refreshFromStorage();
-          return;
-        }
-
-        // Fallback: locate meeting_history rows for this meeting that reference the motion id in their event JSON
-        // We'll fetch meeting_history rows for the meeting and filter client-side for matches.
-        const { data: rows, error: selectErr } = await supabase.from('meeting_history').select('id,event').eq('meeting_id', currentSession.id);
-        console.log('fetched meeting_history rows', { count: (rows||[]).length, selectErr });
-        if (selectErr) { console.error('Failed to query meeting_history', selectErr); alert('Failed to delete history item'); return; }
-
-        const toDeleteIds = (rows || []).filter(r => {
-          const ev = r.event || {};
-          const mid = ev.motion_id || ev.motion?.id || ev.motionId || (ev.reply && (ev.reply.motion_id || ev.reply.motionId));
-          return mid === itemId;
-        }).map(r => r.id);
-
-        console.log('matched meeting_history ids to delete', toDeleteIds);
-
-        if (!toDeleteIds || toDeleteIds.length === 0) {
-          alert('No matching history rows found to delete.');
-          return;
-        }
-
-        // Delete all matching rows by id (batch)
-        try {
-          const { data: delDataBatch, error: delBatchErr } = await supabase.from('meeting_history').delete().in('id', toDeleteIds).select();
-          console.log('deleted history rows batch', { delDataBatch, delBatchErr });
-          if (delBatchErr) console.error('Failed to delete history rows batch', delBatchErr);
-        } catch (e) {
-          console.error('Error deleting history rows batch', e);
-          // fallback to per-row deletes
-          for (const id of toDeleteIds) {
-            try {
-              const { data: delData, error: delErr } = await supabase.from('meeting_history').delete().match({ id }).select();
-              console.log('deleted history row fallback', id, { delData, delErr });
-              if (delErr) console.error('Failed to delete history row', id, delErr);
-            } catch (ee) { console.error('Error deleting history row', id, ee); }
-          }
-        }
-        refreshFromStorage();
-      } catch (e) {
-        console.error(e);
-        alert('Failed to delete history item');
-      }
-    })();
-  };
+  } catch (e) {
+    console.error('Delete flow failed:', e);
+    alert('Failed to delete history item. check console for details.');
+  }
+};
 
   // Allow a member who voted FOR a historical motion to overturn it (bring it back to active)
   const handleOverturnHistory = (item) => {
