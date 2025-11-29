@@ -736,28 +736,44 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
   }
 
   try {
-    // ---------------------------------------------------------
-    // SCENARIO 1: We have the specific Row ID (Fastest)
-    // ---------------------------------------------------------
-    if (historyRowId) {
-      // We simply attempt to delete. 
-      // The RLS policy "history_delete_motion" will automatically check 
-      // if the meeting belonging to this history item is owned by you.
-      const { error, count } = await supabase
-        .from('meeting_history')
-        .delete({ count: 'exact' }) 
-        .eq('id', historyRowId);
+    if (itemId) {
+      console.log('Motion ID detected. Starting Bulk Delete for:', itemId);
 
-      if (error) throw error;
-      
-      // If count is 0, it means the ID didn't exist OR RLS blocked it silently
-      if (count === 0) {
-        console.warn("Item not deleted. Either it doesn't exist or you lack RLS permission.");
+      // 1. Fetch all history for this meeting to find matches
+      // (Requires the SELECT policy we added!)
+      const { data: rows, error: selectErr } = await supabase
+        .from('meeting_history')
+        .select('id, event')
+        .eq('meeting_id', currentSession.id);
+
+      if (selectErr) throw selectErr;
+
+      // 2. Filter client-side to find every row related to this Motion ID
+      const toDeleteIds = (rows || []).filter(r => {
+        const ev = r.event || {};
+        // Check all possible locations for the ID in your JSON
+        const mid = ev.motion_id || ev.motion?.id || ev.motionId || (ev.reply && (ev.reply.motion_id || ev.reply.motionId));
+        return mid === itemId;
+      }).map(r => r.id);
+
+      if (toDeleteIds.length === 0) {
+        // Edge case: If we couldn't find matches by JSON, maybe fallback to single delete?
+        console.warn('No matching rows found by Motion ID.');
       } else {
-        console.log('Successfully deleted row', historyRowId);
+        console.log('Found matching rows to delete:', toDeleteIds);
+
+        // 3. Delete them all
+        const { error: delBatchErr } = await supabase
+          .from('meeting_history')
+          .delete()
+          .in('id', toDeleteIds);
+
+        if (delBatchErr) throw delBatchErr;
+
+        console.log('Bulk delete complete');
         refreshFromStorage();
+        return; // DONE! We skip the single delete below.
       }
-      return;
     }
   } catch (e) {
     console.error('Delete flow failed:', e);
