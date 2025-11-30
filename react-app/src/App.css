@@ -234,6 +234,52 @@ body {
     cursor: not-allowed;
 }
 
+/* Invite notification (site-styled) */
+.invite-notification {
+    border: 1px solid #ffeeba;
+    background-color: #fff3cd;
+    padding: 12px;
+    margin: 12px auto; /* center horizontally */
+    border-radius: 8px;
+    text-align: left;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    /* shrink to fit content but never overflow viewport */
+    width: max-content;
+    max-width: calc(100% - 48px);
+    box-sizing: border-box;
+}
+.invite-notification strong {
+    color: #856404;
+}
+.invite-notification ul {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.invite-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: 6px;
+}
+.invite-item-left {
+    display: flex;
+    flex-direction: column;
+}
+.invite-meta {
+    font-size: 0.85rem;
+    color: #856404;
+}
+.invite-actions button {
+    min-width: 84px;
+}
+
+
 /* Meetings Container */
 .meetings-container {
     max-width: 600px;
@@ -255,6 +301,60 @@ body {
 .meeting-card:hover {
     transform: translateY(-3px);
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Allow meeting-card children to wrap so the attendees panel can sit below without overflowing */
+.meeting-card {
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+/* Attendees section sits full-width below the main card row */
+.attendees-section {
+    width: 100%;
+    margin-top: 16px;
+    padding-left: 16px; /* visually align with content */
+    box-sizing: border-box;
+}
+
+.attendees-box {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    background: #fafafa;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.attendees-error {
+    color: crimson;
+    margin-top: 6px;
+}
+
+.attendees-list {
+    margin-top: 6px;
+    padding-left: 0;
+    list-style: none;
+}
+
+.attendee-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.attendee-label {
+    flex: 1 1 auto;
+    min-width: 0; /* allow truncation if needed */
+    overflow-wrap: anywhere;
+}
+
+.remove-btn.small {
+    margin-left: 8px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
 }
 
 .meeting-info {

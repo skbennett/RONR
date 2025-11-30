@@ -9,7 +9,8 @@ import {
   inviteUserByEmail,
   getMyInvitations,
   declineInvite,
-  getMeetingAttendees
+  getMeetingAttendees,
+  removeMeetingAttendee
 } from '../services/supabaseDataManager';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -211,6 +212,26 @@ function Meetings() {
     }
   };
 
+  const handleRemoveAttendee = async (meetingId, attendeeId) => {
+    if (!window.confirm('Remove this attendee from the meeting?')) return;
+    try {
+      const { error } = await removeMeetingAttendee(meetingId, attendeeId);
+      if (error) {
+        console.error('removeMeetingAttendee error', error);
+        alert('Failed to remove attendee: ' + (error.message || JSON.stringify(error)));
+      } else {
+        // clear cached attendees then refresh attendee list for this meeting
+        setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: null }));
+        await toggleShowAttendees(meetingId, true);
+        // also refresh meetings so roles/counts update
+        await loadMeetings();
+      }
+    } catch (e) {
+      console.error('Error removing attendee', e);
+      alert('Failed to remove attendee: ' + (e.message || e));
+    }
+  };
+
   const handleLeave = async (meetingId) => {
     if (!window.confirm('Leave this meeting?')) return;
     const { error } = await leaveMeeting(meetingId);
@@ -239,18 +260,28 @@ function Meetings() {
 
       {/* Invitations notification */}
       {pendingInvites && pendingInvites.length > 0 && (
-        <div style={{ border: '1px solid #ccc', padding: 12, margin: '12px 0', background: '#fffbe6' }}>
+        <div className="invite-notification">
           <strong>You have pending meeting invitations</strong>
           <ul>
-            {pendingInvites.map(inv => (
-              <li key={inv.id} style={{ marginTop: 8 }}>
-                Meeting: {inv.meeting_id} — Invited at {new Date(inv.created_at).toLocaleString()}
-                <div style={{ marginTop: 6 }}>
-                  <button onClick={() => handleAcceptInvite(inv.meeting_id)}>Accept</button>
-                  <button onClick={() => handleDeclineInvite(inv.meeting_id)} style={{ marginLeft: 8 }}>Decline</button>
-                </div>
-              </li>
-            ))}
+            {pendingInvites.map(inv => {
+              const meetingObj = meetings.find(m => m.id === inv.meeting_id);
+              // Prefer denormalized meeting title stored on the invitation (if present),
+              // otherwise fall back to the loaded meetings list; final fallback is a friendly label.
+              const meetingTitle = inv.meeting_title || (meetingObj ? meetingObj.title : null) || 'Unknown meeting';
+              return (
+                <li key={inv.id} className="invite-item">
+                  <div className="invite-item-left">
+                    <div>Meeting: <span className="invite-meeting-title">{meetingTitle}</span></div>
+                      <div className="invite-meta">Invited at {new Date(inv.created_at).toLocaleString()}</div>
+                      <div className="invite-meta">Invited by: {inv.inviter_email || 'Unknown'}</div>
+                  </div>
+                  <div className="invite-actions">
+                    <button className="primary-btn" onClick={() => handleAcceptInvite(inv.meeting_id)}>Accept</button>
+                    <button className="secondary-btn" onClick={() => handleDeclineInvite(inv.meeting_id)} style={{ marginLeft: 8 }}>Decline</button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -298,7 +329,7 @@ function Meetings() {
             </div>
             {/* Owner / Chair: show attendees toggle */}
             {(meeting.my_role === 'owner' || meeting.my_role === 'chair') && (
-              <div style={{ marginTop: 16, marginLeft: 16 }}>
+              <div className="attendees-section">
                 <button
                   className="secondary-btn"
                   onClick={async () => {
@@ -314,18 +345,26 @@ function Meetings() {
                   {attendeesByMeeting[meeting.id] ? 'Hide Attendees' : (attendeesLoading[meeting.id] ? 'Loading...' : 'Show Attendees')}
                 </button>
                 {attendeesByMeeting[meeting.id] && (
-                  <div style={{ marginTop: 8, padding: 8, border: '1px solid #eee', borderRadius: 6, background: '#fafafa' }}>
+                  <div className="attendees-box">
                     <strong>Attendees</strong>
                     {attendeesError[meeting.id] ? (
-                      <div style={{ color: 'crimson', marginTop: 6 }}>{attendeesError[meeting.id]}</div>
+                      <div className="attendees-error">{attendeesError[meeting.id]}</div>
                     ) : (
-                      <ul style={{ marginTop: 6 }}>
-                        {attendeesByMeeting[meeting.id].length === 0 && <li style={{ fontStyle: 'italic' }}>No attendees found.</li>}
+                      <ul className="attendees-list">
+                        {attendeesByMeeting[meeting.id].length === 0 && <li className="no-attendees">No attendees found.</li>}
                         {attendeesByMeeting[meeting.id].map(a => (
-                          <li key={a.user_id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span>{a.email || a.user_id}</span>
+                          <li key={a.user_id} className="attendee-row">
+                            <span className="attendee-label">{a.email || a.user_id}</span>
                             {a.role && (
                               <span className={`role-badge ${a.role}`}>{a.role.charAt(0).toUpperCase() + a.role.slice(1)}</span>
+                            )}
+                            {(meeting.my_role === 'owner' || meeting.my_role === 'chair') && a.user_id !== user?.id && (
+                              <button
+                                className="remove-btn small"
+                                onClick={() => handleRemoveAttendee(meeting.id, a.user_id)}
+                              >
+                                Remove
+                              </button>
                             )}
                           </li>
                         ))}

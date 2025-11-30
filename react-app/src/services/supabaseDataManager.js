@@ -45,14 +45,27 @@ export async function createMeeting({ title, description = '', status = 'schedul
 export async function inviteUser(meetingId, inviteeId) {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');
-
   // create invitation (audit) and an attendee row with role 'invited'
   // create only the invitation (do not pre-create meeting_attendees row)
+  // fetch meeting title to denormalize into the invitation row
+  let meetingTitle = null;
+  try {
+    const { data: mdata, error: mErr } = await supabase.from('meetings').select('title').eq('id', meetingId).single();
+    if (!mErr && mdata) meetingTitle = mdata.title || null;
+  } catch (e) {
+    console.error('Failed to fetch meeting title for invitation', e);
+  }
+
+  // capture inviter email from the authenticated user object (if present)
+  const inviterEmail = user?.email || null;
+
   const { data, error } = await supabase.from('invitations').insert({
     meeting_id: meetingId,
     invitee: inviteeId,
     inviter: user.id,
-    status: 'pending'
+    status: 'pending',
+    meeting_title: meetingTitle,
+    inviter_email: inviterEmail
   }).select().single();
 
   return { data, error };
@@ -145,6 +158,12 @@ export async function getUserMeetings() {
 // Fetch attendees for a meeting via SECURITY DEFINER RPC which enforces authorization
 export async function getMeetingAttendees(meetingId) {
   const { data, error } = await supabase.rpc('get_meeting_attendees', { meeting: meetingId });
+  return { data, error };
+}
+
+// Remove an attendee from a meeting via SECURITY DEFINER RPC (owner or chair)
+export async function removeMeetingAttendee(meetingId, attendeeId) {
+  const { data, error } = await supabase.rpc('remove_meeting_attendee', { meeting: meetingId, attendee: attendeeId });
   return { data, error };
 }
 
@@ -421,6 +440,8 @@ export default {
   subscribeToMeeting,
   downloadMinutes,
   leaveMeeting,
+  getMeetingAttendees,
+  removeMeetingAttendee,
   transferChair,
   subscribeToMyAttendees
 };
