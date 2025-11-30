@@ -13,23 +13,11 @@ import {
   removeMeetingAttendee
 } from '../services/supabaseDataManager';
 import { useAuth } from '../contexts/AuthContext';
-
-// --- Helper Functions ---
-const formatDate = (dateStr) => {
-  if (!dateStr) return 'N/A';
-  const dateObj = new Date(dateStr);
-  return dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-};
-
-const formatTime = (timeStr) => {
-  if (!timeStr) return 'N/A';
-  const [hourStr, minuteStr] = timeStr.split(":");
-  let hour = parseInt(hourStr, 10);
-  const minute = parseInt(minuteStr, 10);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  hour = hour % 12 || 12;
-  return `${hour}:${minute.toString().padStart(2, "0")} ${ampm}`;
-};
+import AddMeetingForm from '../components/meetings/AddMeetingForm';
+import InvitationsList from '../components/meetings/InvitationsList';
+import InviteForm from '../components/meetings/InviteForm';
+import MeetingCard from '../components/meetings/MeetingCard';
+import { formatDate, formatTime } from '../utils/meetingUtils';
 
 // --- The Main Meetings Page Component ---
 function Meetings() {
@@ -246,135 +234,50 @@ function Meetings() {
   if (isLoading) {
     return <div>Loading meetings...</div>;
   }
-
   return (
     <div className="meetings-page-container">
-      <form className="add-meeting-form" onSubmit={handleAddMeeting}>
-        <h3>Add a New Meeting</h3>
-        {errorMsg && <div style={{ color: 'crimson', marginBottom: 8 }}>{errorMsg}</div>}
-        <input type="text" placeholder="Meeting Title" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-        <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-        <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
-        <button type="submit">Add Meeting</button>
-      </form>
+      <AddMeetingForm
+        newTitle={newTitle}
+        setNewTitle={setNewTitle}
+        newDate={newDate}
+        setNewDate={setNewDate}
+        newTime={newTime}
+        setNewTime={setNewTime}
+        handleAddMeeting={handleAddMeeting}
+        errorMsg={errorMsg}
+      />
 
-      {/* Invitations notification */}
-      {pendingInvites && pendingInvites.length > 0 && (
-        <div className="invite-notification">
-          <strong>You have pending meeting invitations</strong>
-          <ul>
-            {pendingInvites.map(inv => {
-              const meetingObj = meetings.find(m => m.id === inv.meeting_id);
-              // Prefer denormalized meeting title stored on the invitation (if present),
-              // otherwise fall back to the loaded meetings list; final fallback is a friendly label.
-              const meetingTitle = inv.meeting_title || (meetingObj ? meetingObj.title : null) || 'Unknown meeting';
-              return (
-                <li key={inv.id} className="invite-item">
-                  <div className="invite-item-left">
-                    <div>Meeting: <span className="invite-meeting-title">{meetingTitle}</span></div>
-                      <div className="invite-meta">Invited at {new Date(inv.created_at).toLocaleString()}</div>
-                      <div className="invite-meta">Invited by: {inv.inviter_email || 'Unknown'}</div>
-                  </div>
-                  <div className="invite-actions">
-                    <button className="primary-btn" onClick={() => handleAcceptInvite(inv.meeting_id)}>Accept</button>
-                    <button className="secondary-btn" onClick={() => handleDeclineInvite(inv.meeting_id)} style={{ marginLeft: 8 }}>Decline</button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <InvitationsList
+        pendingInvites={pendingInvites}
+        meetings={meetings}
+        handleAcceptInvite={handleAcceptInvite}
+        handleDeclineInvite={handleDeclineInvite}
+      />
 
-      {/* Simple invite-by-email form (will use server-side lookup) */}
-      <form className="invite-form" onSubmit={handleSendInviteByEmail}>
-        <h4>Invite a user to a meeting</h4>
-        <div style={{ marginBottom: 8 }}>
-          <label style={{ marginRight: 8 }}>Select meeting:</label>
-          <select value={selectedMeetingId || ''} onChange={(e) => setSelectedMeetingId(e.target.value)}>
-            <option value="">-- pick meeting --</option>
-            {meetings
-              .filter(m => m.my_role === 'owner' || m.my_role === 'chair')
-              .map(m => (
-                <option key={m.id} value={m.id}>{m.title}</option>
-              ))}
-          </select>
-        </div>
-        <input placeholder="User Email" value={inviteIdentifier} onChange={(e) => setInviteIdentifier(e.target.value)} />
-        <button type="submit" disabled={inviteLoading}>{inviteLoading ? 'Sending...' : 'Send Invite'}</button>
-        <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>Enter the invitee's email. You can only invite a user if you are the chair/owner of the meeting.</div>
-      </form>
+      <InviteForm
+        selectedMeetingId={selectedMeetingId}
+        setSelectedMeetingId={setSelectedMeetingId}
+        inviteIdentifier={inviteIdentifier}
+        setInviteIdentifier={setInviteIdentifier}
+        inviteLoading={inviteLoading}
+        handleSendInviteByEmail={handleSendInviteByEmail}
+        meetings={meetings}
+      />
 
       <div className="meetings-container">
         {meetings.map((meeting) => (
-          <div key={meeting.id} className="meeting-card">
-            <div className="meeting-info">
-              <div className="meeting-title">{meeting.title}</div>
-              <div className="meeting-details">
-                Date: {formatDate(meeting.coordination?.date || meeting.created_at)} &nbsp;|&nbsp; Time: {formatTime(meeting.coordination?.time || '')}
-              </div>
-              <div style={{ fontSize: 12, color: '#666' }}>Role: {meeting.my_role || 'unknown'}</div>
-            </div>
-            <div className="meeting-buttons">
-              {meeting.my_role === 'invited' ? (
-                <button className="join-btn" onClick={() => handleAcceptInvite(meeting.id)}>Accept Invite</button>
-              ) : meeting.my_role === 'owner' ? (
-                <button className="join-btn owner" disabled>Owner</button>
-              ) : meeting.my_role === 'chair' ? (
-                <button className="join-btn chair" disabled>Chair</button>
-              ) : (
-                <button className="join-btn joined" disabled>Member</button>
-              )}
-              <button className="remove-btn" onClick={() => handleLeave(meeting.id)}>Leave</button>
-            </div>
-            {/* Owner / Chair: show attendees toggle */}
-            {(meeting.my_role === 'owner' || meeting.my_role === 'chair') && (
-              <div className="attendees-section">
-                <button
-                  className="secondary-btn"
-                  onClick={async () => {
-                    const currentlyLoaded = attendeesByMeeting[meeting.id];
-                    if (currentlyLoaded) {
-                      // hide
-                      setAttendeesByMeeting(prev => ({ ...prev, [meeting.id]: null }));
-                    } else {
-                      await toggleShowAttendees(meeting.id, true);
-                    }
-                  }}
-                >
-                  {attendeesByMeeting[meeting.id] ? 'Hide Attendees' : (attendeesLoading[meeting.id] ? 'Loading...' : 'Show Attendees')}
-                </button>
-                {attendeesByMeeting[meeting.id] && (
-                  <div className="attendees-box">
-                    <strong>Attendees</strong>
-                    {attendeesError[meeting.id] ? (
-                      <div className="attendees-error">{attendeesError[meeting.id]}</div>
-                    ) : (
-                      <ul className="attendees-list">
-                        {attendeesByMeeting[meeting.id].length === 0 && <li className="no-attendees">No attendees found.</li>}
-                        {attendeesByMeeting[meeting.id].map(a => (
-                          <li key={a.user_id} className="attendee-row">
-                            <span className="attendee-label">{a.email || a.user_id}</span>
-                            {a.role && (
-                              <span className={`role-badge ${a.role}`}>{a.role.charAt(0).toUpperCase() + a.role.slice(1)}</span>
-                            )}
-                            {(meeting.my_role === 'owner' || meeting.my_role === 'chair') && a.user_id !== user?.id && (
-                              <button
-                                className="remove-btn small"
-                                onClick={() => handleRemoveAttendee(meeting.id, a.user_id)}
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <MeetingCard
+            key={meeting.id}
+            meeting={meeting}
+            user={user}
+            attendeesByMeeting={attendeesByMeeting}
+            attendeesLoading={attendeesLoading}
+            attendeesError={attendeesError}
+            toggleShowAttendees={toggleShowAttendees}
+            handleLeave={handleLeave}
+            handleAcceptInvite={handleAcceptInvite}
+            handleRemoveAttendee={handleRemoveAttendee}
+          />
         ))}
       </div>
     </div>
