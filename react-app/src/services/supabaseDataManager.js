@@ -142,6 +142,12 @@ export async function getUserMeetings() {
   return { data: merged, error: null };
 }
 
+// Fetch attendees for a meeting via SECURITY DEFINER RPC which enforces authorization
+export async function getMeetingAttendees(meetingId) {
+  const { data, error } = await supabase.rpc('get_meeting_attendees', { meeting: meetingId });
+  return { data, error };
+}
+
 export async function leaveMeeting(meetingId) {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');

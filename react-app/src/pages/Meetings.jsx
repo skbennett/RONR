@@ -8,7 +8,8 @@ import {
   inviteUser,
   inviteUserByEmail,
   getMyInvitations,
-  declineInvite
+  declineInvite,
+  getMeetingAttendees
 } from '../services/supabaseDataManager';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -41,6 +42,9 @@ function Meetings() {
   const [inviteIdentifier, setInviteIdentifier] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
+  const [attendeesByMeeting, setAttendeesByMeeting] = useState({});
+  const [attendeesLoading, setAttendeesLoading] = useState({});
+  const [attendeesError, setAttendeesError] = useState({});
 
   const { user } = useAuth();
 
@@ -179,6 +183,34 @@ function Meetings() {
     }
   };
 
+  const toggleShowAttendees = async (meetingId, show) => {
+    // show: true => fetch and display, false => hide
+    if (!show) {
+      setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: null }));
+      return;
+    }
+    // if already loaded, just toggle on
+    if (attendeesByMeeting[meetingId]) return;
+    setAttendeesLoading(prev => ({ ...prev, [meetingId]: true }));
+    try {
+      const { data, error } = await getMeetingAttendees(meetingId);
+      if (error) {
+        console.error('getMeetingAttendees error', error);
+        setAttendeesError(prev => ({ ...prev, [meetingId]: error.message || JSON.stringify(error) }));
+        setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: [] }));
+      } else {
+        setAttendeesError(prev => ({ ...prev, [meetingId]: null }));
+        setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: data || [] }));
+      }
+    } catch (e) {
+      console.error('Failed to load attendees', e);
+      setAttendeesError(prev => ({ ...prev, [meetingId]: e.message || String(e) }));
+      setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: [] }));
+    } finally {
+      setAttendeesLoading(prev => ({ ...prev, [meetingId]: false }));
+    }
+  };
+
   const handleLeave = async (meetingId) => {
     if (!window.confirm('Leave this meeting?')) return;
     const { error } = await leaveMeeting(meetingId);
@@ -230,14 +262,16 @@ function Meetings() {
           <label style={{ marginRight: 8 }}>Select meeting:</label>
           <select value={selectedMeetingId || ''} onChange={(e) => setSelectedMeetingId(e.target.value)}>
             <option value="">-- pick meeting --</option>
-            {meetings.map(m => (
-              <option key={m.id} value={m.id}>{m.title}</option>
-            ))}
+            {meetings
+              .filter(m => m.my_role === 'owner' || m.my_role === 'chair')
+              .map(m => (
+                <option key={m.id} value={m.id}>{m.title}</option>
+              ))}
           </select>
         </div>
-        <input placeholder="Email or display name" value={inviteIdentifier} onChange={(e) => setInviteIdentifier(e.target.value)} />
+        <input placeholder="User Email" value={inviteIdentifier} onChange={(e) => setInviteIdentifier(e.target.value)} />
         <button type="submit" disabled={inviteLoading}>{inviteLoading ? 'Sending...' : 'Send Invite'}</button>
-        <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>Enter the invitee's email (preferred) or display name.</div>
+        <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>Enter the invitee's email. You can only invite a user if you are the chair/owner of the meeting.</div>
       </form>
 
       <div className="meetings-container">
@@ -253,11 +287,54 @@ function Meetings() {
             <div className="meeting-buttons">
               {meeting.my_role === 'invited' ? (
                 <button className="join-btn" onClick={() => handleAcceptInvite(meeting.id)}>Accept Invite</button>
+              ) : meeting.my_role === 'owner' ? (
+                <button className="join-btn owner" disabled>Owner</button>
+              ) : meeting.my_role === 'chair' ? (
+                <button className="join-btn chair" disabled>Chair</button>
               ) : (
                 <button className="join-btn joined" disabled>Member</button>
               )}
               <button className="remove-btn" onClick={() => handleLeave(meeting.id)}>Leave</button>
             </div>
+            {/* Owner / Chair: show attendees toggle */}
+            {(meeting.my_role === 'owner' || meeting.my_role === 'chair') && (
+              <div style={{ marginTop: 16, marginLeft: 16 }}>
+                <button
+                  className="secondary-btn"
+                  onClick={async () => {
+                    const currentlyLoaded = attendeesByMeeting[meeting.id];
+                    if (currentlyLoaded) {
+                      // hide
+                      setAttendeesByMeeting(prev => ({ ...prev, [meeting.id]: null }));
+                    } else {
+                      await toggleShowAttendees(meeting.id, true);
+                    }
+                  }}
+                >
+                  {attendeesByMeeting[meeting.id] ? 'Hide Attendees' : (attendeesLoading[meeting.id] ? 'Loading...' : 'Show Attendees')}
+                </button>
+                {attendeesByMeeting[meeting.id] && (
+                  <div style={{ marginTop: 8, padding: 8, border: '1px solid #eee', borderRadius: 6, background: '#fafafa' }}>
+                    <strong>Attendees</strong>
+                    {attendeesError[meeting.id] ? (
+                      <div style={{ color: 'crimson', marginTop: 6 }}>{attendeesError[meeting.id]}</div>
+                    ) : (
+                      <ul style={{ marginTop: 6 }}>
+                        {attendeesByMeeting[meeting.id].length === 0 && <li style={{ fontStyle: 'italic' }}>No attendees found.</li>}
+                        {attendeesByMeeting[meeting.id].map(a => (
+                          <li key={a.user_id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>{a.email || a.user_id}</span>
+                            {a.role && (
+                              <span className={`role-badge ${a.role}`}>{a.role.charAt(0).toUpperCase() + a.role.slice(1)}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -300,6 +300,40 @@ body {
     background-color: #1b5e20;
 }
 
+/* Owner / Chair gold styling */
+.join-btn.owner,
+.join-btn.chair {
+    background-color: #d4af37; /* gold */
+    color: #000;
+}
+.join-btn.owner:hover,
+.join-btn.chair:hover {
+    background-color: #b98f2d;
+}
+
+/* Role badge shown next to attendee emails */
+.role-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.role-badge.owner,
+.role-badge.chair {
+    background-color: #d4af37; /* gold */
+    color: #000;
+}
+.role-badge.member {
+    background-color: #2e7d32; /* green */
+    color: #fff;
+}
+.role-badge.invited {
+    background-color: #ffc107; /* amber */
+    color: #000;
+}
+
 
 /* Remove button */
 .remove-btn {
