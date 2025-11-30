@@ -383,6 +383,7 @@ export default {
   sendChat,
   subscribeToMeeting,
   downloadMinutes,
+  leaveMeeting,
   transferChair,
   subscribeToMyAttendees
 };

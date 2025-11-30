@@ -559,6 +559,10 @@ CREATE POLICY "attendees_update_roles_by_owner" ON "public"."meeting_attendees" 
    FROM "public"."meetings" "m"
   WHERE (("m"."id" = "meeting_attendees"."meeting_id") AND ("m"."owner" = "auth"."uid"()))))));
 
+CREATE POLICY "attendees_delete_by_self_or_owner" ON "public"."meeting_attendees" FOR DELETE USING (("auth"."uid"() IS NOT NULL) AND (("user_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+  FROM "public"."meetings" "m"
+  WHERE (("m"."id" = "meeting_attendees"."meeting_id") AND ("m"."owner" = "auth"."uid"()))))));
+
 
 
 ALTER TABLE "public"."chats" ENABLE ROW LEVEL SECURITY;
