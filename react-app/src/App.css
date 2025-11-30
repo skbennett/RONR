@@ -195,6 +195,45 @@ body {
     background-color: #6a9c7c; /* A slightly darker shade */
 }
 
+/* Invite form: reuse the general site form styling for consistency */
+.invite-form {
+    margin: 20px auto 16px auto;
+    max-width: 500px;
+    padding: 16px;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    background-color: #f9f9f9;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    text-align: left;
+}
+.invite-form h4 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: #333;
+}
+.invite-form input,
+.invite-form select {
+    width: calc(100% - 16px);
+    margin-bottom: 10px;
+    padding: 8px;
+    border-radius: 5px;
+    border: 1px solid #aaa;
+    font-size: 1rem;
+}
+.invite-form button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 5px;
+    background-color: #7AAE8C;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+.invite-form button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
 /* Meetings Container */
 .meetings-container {
     max-width: 600px;

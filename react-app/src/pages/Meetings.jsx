@@ -224,7 +224,7 @@ function Meetings() {
       )}
 
       {/* Simple invite-by-email form (will use server-side lookup) */}
-      <form onSubmit={handleSendInviteByEmail} style={{ marginBottom: 16 }}>
+      <form className="invite-form" onSubmit={handleSendInviteByEmail}>
         <h4>Invite a user to a meeting</h4>
         <div style={{ marginBottom: 8 }}>
           <label style={{ marginRight: 8 }}>Select meeting:</label>
