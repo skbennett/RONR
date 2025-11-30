@@ -4,7 +4,11 @@ import {
   getUserMeetings,
   createMeeting,
   acceptInvite,
-  leaveMeeting
+  leaveMeeting,
+  inviteUser,
+  inviteUserByEmail,
+  getMyInvitations,
+  declineInvite
 } from '../services/supabaseDataManager';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -33,6 +37,10 @@ function Meetings() {
   const [newDate, setNewDate] = useState('');
   const [newTime, setNewTime] = useState('');
   const [errorMsg, setErrorMsg] = useState(null);
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const [inviteIdentifier, setInviteIdentifier] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [selectedMeetingId, setSelectedMeetingId] = useState(null);
 
   const { user } = useAuth();
 
@@ -56,6 +64,17 @@ function Meetings() {
 
   useEffect(() => {
     loadMeetings();
+    // load pending invitations for this user
+    (async () => {
+      if (!user) return setPendingInvites([]);
+      try {
+        const { data } = await getMyInvitations();
+        setPendingInvites(data || []);
+      } catch (e) {
+        console.error('Failed to load invitations', e);
+        setPendingInvites([]);
+      }
+    })();
   }, [user]);
 
   const handleAddMeeting = async (event) => {
@@ -97,9 +116,66 @@ function Meetings() {
     try {
       await acceptInvite(meetingId);
       await loadMeetings();
+      // refresh invites
+      const { data } = await getMyInvitations();
+      setPendingInvites(data || []);
     } catch (e) {
       console.error(e);
       alert('Failed to accept invite.');
+    }
+  };
+
+  const handleDeclineInvite = async (meetingId) => {
+    if (!window.confirm('Decline this invitation?')) return;
+    try {
+      await declineInvite(meetingId);
+      const { data } = await getMyInvitations();
+      setPendingInvites(data || []);
+      await loadMeetings();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to decline invite.');
+    }
+  };
+
+  const handleSendInviteByEmail = async (e) => {
+    e.preventDefault();
+    if (!inviteIdentifier) return alert('Enter the invitee user id (UUID) or email.');
+    if (!selectedMeetingId) return alert('Select a meeting to invite the user to.');
+    setInviteLoading(true);
+    try {
+      // If the identifier looks like an email, call the backend RPC that accepts email
+      if (inviteIdentifier.includes('@')) {
+        const { data, error } = await inviteUserByEmail(selectedMeetingId, inviteIdentifier);
+        if (error) {
+          console.error('inviteUserByEmail error', error);
+          alert('Failed to send invite by email: ' + (error.message || JSON.stringify(error)));
+        } else {
+          alert('Invite created');
+          setInviteIdentifier('');
+          const invites = await getMyInvitations();
+          setPendingInvites(invites.data || []);
+          await loadMeetings();
+        }
+      } else {
+        // otherwise expect a UUID and call inviteUser
+        const { data, error } = await inviteUser(selectedMeetingId, inviteIdentifier);
+        if (error) {
+          console.error('inviteUser error', error);
+          alert('Failed to send invite: ' + (error.message || JSON.stringify(error)));
+        } else {
+          alert('Invite created');
+          setInviteIdentifier('');
+          const invites = await getMyInvitations();
+          setPendingInvites(invites.data || []);
+          await loadMeetings();
+        }
+      }
+    } catch (err) {
+      console.error('Invite error', err);
+      alert('Failed to send invite: ' + (err.message || err));
+    } finally {
+      setInviteLoading(false);
     }
   };
 
@@ -127,6 +203,41 @@ function Meetings() {
         <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
         <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
         <button type="submit">Add Meeting</button>
+      </form>
+
+      {/* Invitations notification */}
+      {pendingInvites && pendingInvites.length > 0 && (
+        <div style={{ border: '1px solid #ccc', padding: 12, margin: '12px 0', background: '#fffbe6' }}>
+          <strong>You have pending meeting invitations</strong>
+          <ul>
+            {pendingInvites.map(inv => (
+              <li key={inv.id} style={{ marginTop: 8 }}>
+                Meeting: {inv.meeting_id} — Invited at {new Date(inv.created_at).toLocaleString()}
+                <div style={{ marginTop: 6 }}>
+                  <button onClick={() => handleAcceptInvite(inv.meeting_id)}>Accept</button>
+                  <button onClick={() => handleDeclineInvite(inv.meeting_id)} style={{ marginLeft: 8 }}>Decline</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Simple invite-by-email form (will use server-side lookup) */}
+      <form onSubmit={handleSendInviteByEmail} style={{ marginBottom: 16 }}>
+        <h4>Invite a user to a meeting</h4>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ marginRight: 8 }}>Select meeting:</label>
+          <select value={selectedMeetingId || ''} onChange={(e) => setSelectedMeetingId(e.target.value)}>
+            <option value="">-- pick meeting --</option>
+            {meetings.map(m => (
+              <option key={m.id} value={m.id}>{m.title}</option>
+            ))}
+          </select>
+        </div>
+        <input placeholder="Email or display name" value={inviteIdentifier} onChange={(e) => setInviteIdentifier(e.target.value)} />
+        <button type="submit" disabled={inviteLoading}>{inviteLoading ? 'Sending...' : 'Send Invite'}</button>
+        <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>Enter the invitee's email (preferred) or display name.</div>
       </form>
 
       <div className="meetings-container">

@@ -47,23 +47,46 @@ export async function inviteUser(meetingId, inviteeId) {
   if (!user) throw new Error('Not authenticated');
 
   // create invitation (audit) and an attendee row with role 'invited'
-  const { error: invErr } = await supabase.from('invitations').insert({
+  // create only the invitation (do not pre-create meeting_attendees row)
+  const { data, error } = await supabase.from('invitations').insert({
     meeting_id: meetingId,
     invitee: inviteeId,
     inviter: user.id,
     status: 'pending'
-  });
-  if (invErr) return { error: invErr };
-
-    const { data, error } = await supabase.from('meeting_attendees').upsert({
-    meeting_id: meetingId,
-    user_id: inviteeId,
-    role: 'invited',
-    invited_by: user.id,
-    invited_at: new Date().toISOString()
-    }, { onConflict: 'meeting_id,user_id' }).select();
+  }).select().single();
 
   return { data, error };
+}
+
+// Invite by email using Postgres RPC `invite_user_by_email` (defined in Supabase SQL)
+export async function inviteUserByEmail(meetingId, inviteeEmail) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // call the RPC which will validate the caller and perform the insert as SECURITY DEFINER
+  const { data, error } = await supabase.rpc('invite_user_by_email', { meeting: meetingId, invite_email: inviteeEmail });
+  return { data, error };
+}
+
+export async function getMyInvitations() {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase.from('invitations').select('*').eq('invitee', user.id).order('created_at', { ascending: false });
+  return { data, error };
+}
+
+export async function declineInvite(meetingId) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // remove the invitation row
+  const { error } = await supabase.from('invitations').delete().match({ meeting_id: meetingId, invitee: user.id });
+  if (error) return { error };
+
+  // remove any invited attendee row for this user
+  const { error: attErr } = await supabase.from('meeting_attendees').delete().match({ meeting_id: meetingId, user_id: user.id });
+  return { error: attErr || null };
 }
 
 export async function acceptInvite(meetingId) {
@@ -78,8 +101,13 @@ export async function acceptInvite(meetingId) {
     }, { onConflict: 'meeting_id,user_id' }).select();
 
   if (!error) {
-    // mark invitation accepted if exists
-    await supabase.from('invitations').update({ status: 'accepted' }).match({ meeting_id: meetingId, invitee: user.id });
+    // remove the invitation row since the invite has been accepted
+    const { error: delErr, data: delData } = await supabase.from('invitations').delete().match({ meeting_id: meetingId, invitee: user.id });
+    if (delErr) {
+      // log and return a helpful error so UI can surface it
+      console.error('Failed to delete invitation after accept:', delErr);
+      return { data, error: delErr };
+    }
   }
 
   return { data, error };
@@ -366,6 +394,9 @@ export function subscribeToMyAttendees(userId, handler) {
 export default {
   createMeeting,
   inviteUser,
+  inviteUserByEmail,
+  getMyInvitations,
+  declineInvite,
   acceptInvite,
   getUserMeetings,
   fetchMeetingData,
