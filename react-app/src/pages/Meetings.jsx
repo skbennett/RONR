@@ -4,26 +4,20 @@ import {
   getUserMeetings,
   createMeeting,
   acceptInvite,
-  leaveMeeting
+  leaveMeeting,
+  inviteUser,
+  inviteUserByEmail,
+  getMyInvitations,
+  declineInvite,
+  getMeetingAttendees,
+  removeMeetingAttendee
 } from '../services/supabaseDataManager';
 import { useAuth } from '../contexts/AuthContext';
-
-// --- Helper Functions ---
-const formatDate = (dateStr) => {
-  if (!dateStr) return 'N/A';
-  const dateObj = new Date(dateStr);
-  return dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-};
-
-const formatTime = (timeStr) => {
-  if (!timeStr) return 'N/A';
-  const [hourStr, minuteStr] = timeStr.split(":");
-  let hour = parseInt(hourStr, 10);
-  const minute = parseInt(minuteStr, 10);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  hour = hour % 12 || 12;
-  return `${hour}:${minute.toString().padStart(2, "0")} ${ampm}`;
-};
+import AddMeetingForm from '../components/meetings/AddMeetingForm';
+import InvitationsList from '../components/meetings/InvitationsList';
+import InviteForm from '../components/meetings/InviteForm';
+import MeetingCard from '../components/meetings/MeetingCard';
+import { formatDate, formatTime } from '../utils/meetingUtils';
 
 // --- The Main Meetings Page Component ---
 function Meetings() {
@@ -33,6 +27,13 @@ function Meetings() {
   const [newDate, setNewDate] = useState('');
   const [newTime, setNewTime] = useState('');
   const [errorMsg, setErrorMsg] = useState(null);
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const [inviteIdentifier, setInviteIdentifier] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [selectedMeetingId, setSelectedMeetingId] = useState(null);
+  const [attendeesByMeeting, setAttendeesByMeeting] = useState({});
+  const [attendeesLoading, setAttendeesLoading] = useState({});
+  const [attendeesError, setAttendeesError] = useState({});
 
   const { user } = useAuth();
 
@@ -56,6 +57,17 @@ function Meetings() {
 
   useEffect(() => {
     loadMeetings();
+    // load pending invitations for this user
+    (async () => {
+      if (!user) return setPendingInvites([]);
+      try {
+        const { data } = await getMyInvitations();
+        setPendingInvites(data || []);
+      } catch (e) {
+        console.error('Failed to load invitations', e);
+        setPendingInvites([]);
+      }
+    })();
   }, [user]);
 
   const handleAddMeeting = async (event) => {
@@ -97,9 +109,114 @@ function Meetings() {
     try {
       await acceptInvite(meetingId);
       await loadMeetings();
+      // refresh invites
+      const { data } = await getMyInvitations();
+      setPendingInvites(data || []);
     } catch (e) {
       console.error(e);
       alert('Failed to accept invite.');
+    }
+  };
+
+  const handleDeclineInvite = async (meetingId) => {
+    if (!window.confirm('Decline this invitation?')) return;
+    try {
+      await declineInvite(meetingId);
+      const { data } = await getMyInvitations();
+      setPendingInvites(data || []);
+      await loadMeetings();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to decline invite.');
+    }
+  };
+
+  const handleSendInviteByEmail = async (e) => {
+    e.preventDefault();
+    if (!inviteIdentifier) return alert('Enter the invitee user id (UUID) or email.');
+    if (!selectedMeetingId) return alert('Select a meeting to invite the user to.');
+    setInviteLoading(true);
+    try {
+      // If the identifier looks like an email, call the backend RPC that accepts email
+      if (inviteIdentifier.includes('@')) {
+        const { data, error } = await inviteUserByEmail(selectedMeetingId, inviteIdentifier);
+        if (error) {
+          console.error('inviteUserByEmail error', error);
+          alert('Failed to send invite by email: ' + (error.message || JSON.stringify(error)));
+        } else {
+          alert('Invite created');
+          setInviteIdentifier('');
+          const invites = await getMyInvitations();
+          setPendingInvites(invites.data || []);
+          await loadMeetings();
+        }
+      } else {
+        // otherwise expect a UUID and call inviteUser
+        const { data, error } = await inviteUser(selectedMeetingId, inviteIdentifier);
+        if (error) {
+          console.error('inviteUser error', error);
+          alert('Failed to send invite: ' + (error.message || JSON.stringify(error)));
+        } else {
+          alert('Invite created');
+          setInviteIdentifier('');
+          const invites = await getMyInvitations();
+          setPendingInvites(invites.data || []);
+          await loadMeetings();
+        }
+      }
+    } catch (err) {
+      console.error('Invite error', err);
+      alert('Failed to send invite: ' + (err.message || err));
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const toggleShowAttendees = async (meetingId, show) => {
+    // show: true => fetch and display, false => hide
+    if (!show) {
+      setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: null }));
+      return;
+    }
+    // if already loaded, just toggle on
+    if (attendeesByMeeting[meetingId]) return;
+    setAttendeesLoading(prev => ({ ...prev, [meetingId]: true }));
+    try {
+      const { data, error } = await getMeetingAttendees(meetingId);
+      if (error) {
+        console.error('getMeetingAttendees error', error);
+        setAttendeesError(prev => ({ ...prev, [meetingId]: error.message || JSON.stringify(error) }));
+        setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: [] }));
+      } else {
+        setAttendeesError(prev => ({ ...prev, [meetingId]: null }));
+        setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: data || [] }));
+      }
+    } catch (e) {
+      console.error('Failed to load attendees', e);
+      setAttendeesError(prev => ({ ...prev, [meetingId]: e.message || String(e) }));
+      setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: [] }));
+    } finally {
+      setAttendeesLoading(prev => ({ ...prev, [meetingId]: false }));
+    }
+  };
+
+  const handleRemoveAttendee = async (meetingId, attendeeId) => {
+    if (!window.confirm('Remove this attendee from the meeting?')) return;
+    try {
+      const { error } = await removeMeetingAttendee(meetingId, attendeeId);
+      if (error) {
+        console.error('removeMeetingAttendee error', error);
+        alert('Failed to remove attendee: ' + (error.message || JSON.stringify(error)));
+      } else {
+        // clear cached attendees then refresh attendee list for this meeting
+        setAttendeesByMeeting(prev => ({ ...prev, [meetingId]: null }));
+        await toggleShowAttendees(meetingId, true);
+        // also refresh meetings so roles/counts update
+        await loadMeetings();
+      }
+    } catch (e) {
+      console.error('Error removing attendee', e);
+      alert('Failed to remove attendee: ' + (e.message || e));
     }
   };
 
@@ -117,37 +234,50 @@ function Meetings() {
   if (isLoading) {
     return <div>Loading meetings...</div>;
   }
-
   return (
     <div className="meetings-page-container">
-      <form className="add-meeting-form" onSubmit={handleAddMeeting}>
-        <h3>Add a New Meeting</h3>
-        {errorMsg && <div style={{ color: 'crimson', marginBottom: 8 }}>{errorMsg}</div>}
-        <input type="text" placeholder="Meeting Title" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-        <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-        <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
-        <button type="submit">Add Meeting</button>
-      </form>
+      <AddMeetingForm
+        newTitle={newTitle}
+        setNewTitle={setNewTitle}
+        newDate={newDate}
+        setNewDate={setNewDate}
+        newTime={newTime}
+        setNewTime={setNewTime}
+        handleAddMeeting={handleAddMeeting}
+        errorMsg={errorMsg}
+      />
+
+      <InvitationsList
+        pendingInvites={pendingInvites}
+        meetings={meetings}
+        handleAcceptInvite={handleAcceptInvite}
+        handleDeclineInvite={handleDeclineInvite}
+      />
+
+      <InviteForm
+        selectedMeetingId={selectedMeetingId}
+        setSelectedMeetingId={setSelectedMeetingId}
+        inviteIdentifier={inviteIdentifier}
+        setInviteIdentifier={setInviteIdentifier}
+        inviteLoading={inviteLoading}
+        handleSendInviteByEmail={handleSendInviteByEmail}
+        meetings={meetings}
+      />
 
       <div className="meetings-container">
         {meetings.map((meeting) => (
-          <div key={meeting.id} className="meeting-card">
-            <div className="meeting-info">
-              <div className="meeting-title">{meeting.title}</div>
-              <div className="meeting-details">
-                Date: {formatDate(meeting.coordination?.date || meeting.created_at)} &nbsp;|&nbsp; Time: {formatTime(meeting.coordination?.time || '')}
-              </div>
-              <div style={{ fontSize: 12, color: '#666' }}>Role: {meeting.my_role || 'unknown'}</div>
-            </div>
-            <div className="meeting-buttons">
-              {meeting.my_role === 'invited' ? (
-                <button className="join-btn" onClick={() => handleAcceptInvite(meeting.id)}>Accept Invite</button>
-              ) : (
-                <button className="join-btn joined" disabled>Member</button>
-              )}
-              <button className="remove-btn" onClick={() => handleLeave(meeting.id)}>Leave</button>
-            </div>
-          </div>
+          <MeetingCard
+            key={meeting.id}
+            meeting={meeting}
+            user={user}
+            attendeesByMeeting={attendeesByMeeting}
+            attendeesLoading={attendeesLoading}
+            attendeesError={attendeesError}
+            toggleShowAttendees={toggleShowAttendees}
+            handleLeave={handleLeave}
+            handleAcceptInvite={handleAcceptInvite}
+            handleRemoveAttendee={handleRemoveAttendee}
+          />
         ))}
       </div>
     </div>

@@ -45,25 +45,61 @@ export async function createMeeting({ title, description = '', status = 'schedul
 export async function inviteUser(meetingId, inviteeId) {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');
-
   // create invitation (audit) and an attendee row with role 'invited'
-  const { error: invErr } = await supabase.from('invitations').insert({
+  // create only the invitation (do not pre-create meeting_attendees row)
+  // fetch meeting title to denormalize into the invitation row
+  let meetingTitle = null;
+  try {
+    const { data: mdata, error: mErr } = await supabase.from('meetings').select('title').eq('id', meetingId).single();
+    if (!mErr && mdata) meetingTitle = mdata.title || null;
+  } catch (e) {
+    console.error('Failed to fetch meeting title for invitation', e);
+  }
+
+  // capture inviter email from the authenticated user object (if present)
+  const inviterEmail = user?.email || null;
+
+  const { data, error } = await supabase.from('invitations').insert({
     meeting_id: meetingId,
     invitee: inviteeId,
     inviter: user.id,
-    status: 'pending'
-  });
-  if (invErr) return { error: invErr };
-
-    const { data, error } = await supabase.from('meeting_attendees').upsert({
-    meeting_id: meetingId,
-    user_id: inviteeId,
-    role: 'invited',
-    invited_by: user.id,
-    invited_at: new Date().toISOString()
-    }, { onConflict: 'meeting_id,user_id' }).select();
+    status: 'pending',
+    meeting_title: meetingTitle,
+    inviter_email: inviterEmail
+  }).select().single();
 
   return { data, error };
+}
+
+// Invite by email using Postgres RPC `invite_user_by_email` (defined in Supabase SQL)
+export async function inviteUserByEmail(meetingId, inviteeEmail) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // call the RPC which will validate the caller and perform the insert as SECURITY DEFINER
+  const { data, error } = await supabase.rpc('invite_user_by_email', { meeting: meetingId, invite_email: inviteeEmail });
+  return { data, error };
+}
+
+export async function getMyInvitations() {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase.from('invitations').select('*').eq('invitee', user.id).order('created_at', { ascending: false });
+  return { data, error };
+}
+
+export async function declineInvite(meetingId) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // remove the invitation row
+  const { error } = await supabase.from('invitations').delete().match({ meeting_id: meetingId, invitee: user.id });
+  if (error) return { error };
+
+  // remove any invited attendee row for this user
+  const { error: attErr } = await supabase.from('meeting_attendees').delete().match({ meeting_id: meetingId, user_id: user.id });
+  return { error: attErr || null };
 }
 
 export async function acceptInvite(meetingId) {
@@ -78,8 +114,13 @@ export async function acceptInvite(meetingId) {
     }, { onConflict: 'meeting_id,user_id' }).select();
 
   if (!error) {
-    // mark invitation accepted if exists
-    await supabase.from('invitations').update({ status: 'accepted' }).match({ meeting_id: meetingId, invitee: user.id });
+    // remove the invitation row since the invite has been accepted
+    const { error: delErr, data: delData } = await supabase.from('invitations').delete().match({ meeting_id: meetingId, invitee: user.id });
+    if (delErr) {
+      // log and return a helpful error so UI can surface it
+      console.error('Failed to delete invitation after accept:', delErr);
+      return { data, error: delErr };
+    }
   }
 
   return { data, error };
@@ -114,6 +155,18 @@ export async function getUserMeetings() {
   return { data: merged, error: null };
 }
 
+// Fetch attendees for a meeting via SECURITY DEFINER RPC which enforces authorization
+export async function getMeetingAttendees(meetingId) {
+  const { data, error } = await supabase.rpc('get_meeting_attendees', { meeting: meetingId });
+  return { data, error };
+}
+
+// Remove an attendee from a meeting via SECURITY DEFINER RPC (owner or chair)
+export async function removeMeetingAttendee(meetingId, attendeeId) {
+  const { data, error } = await supabase.rpc('remove_meeting_attendee', { meeting: meetingId, attendee: attendeeId });
+  return { data, error };
+}
+
 export async function leaveMeeting(meetingId) {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');
@@ -138,7 +191,16 @@ export async function fetchMeetingData(meetingId) {
     votes = v || [];
   }
 
-  return { meeting, motions: motions || [], votes, chats: chats || [], history: history || [] };
+  // fetch motion replies and attach to motions
+  let replies = [];
+  if (motionIds.length) {
+    const { data: r } = await supabase.from('motion_replies').select('*').in('motion_id', motionIds).order('created_at', { ascending: true });
+    replies = r || [];
+  }
+
+  const motionsWithReplies = (motions || []).map(m => ({ ...m, replies: (replies || []).filter(rr => rr.motion_id === m.id) }));
+
+  return { meeting, motions: motionsWithReplies, votes, chats: chats || [], history: history || [] };
 }
 
 export async function proposeMotion(meetingId, title, description = '') {
@@ -328,7 +390,16 @@ export async function downloadMinutes(meetingId) {
     votes = v || [];
   }
 
-  const minutes = { meeting, motions, votes, chats, history };
+  // fetch motion replies and attach to motions
+  let replies = [];
+  if (motionIds.length) {
+    const { data: r } = await supabase.from('motion_replies').select('*').in('motion_id', motionIds).order('created_at', { ascending: true });
+    replies = r || [];
+  }
+
+  const motionsWithReplies = (motions || []).map(m => ({ ...m, replies: (replies || []).filter(rr => rr.motion_id === m.id) }));
+
+  const minutes = { meeting, motions: motionsWithReplies, votes, chats, history };
   return minutes;
 }
 
@@ -348,8 +419,12 @@ export function subscribeToMyAttendees(userId, handler) {
 export default {
   createMeeting,
   inviteUser,
+  inviteUserByEmail,
+  getMyInvitations,
+  declineInvite,
   acceptInvite,
   getUserMeetings,
+  fetchMeetingData,
   proposeMotion,
   proposeSubMotion,
   vote,
@@ -364,6 +439,9 @@ export default {
   sendChat,
   subscribeToMeeting,
   downloadMinutes,
+  leaveMeeting,
+  getMeetingAttendees,
+  removeMeetingAttendee,
   transferChair,
   subscribeToMyAttendees
 };
