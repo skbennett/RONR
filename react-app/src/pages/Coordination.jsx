@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import sb from '../services/supabaseDataManager';
+import useMeetingRealtime from '../hooks/useMeetingRealtime';
 import supabase from '../supabaseClient';
 import './coordination.css';
 import MotionCard from '../components/coordination/MotionCard';
@@ -290,23 +291,7 @@ function Coordination() {
     init();
   }, [user]);
 
-  // Subscribe to realtime meeting events for the active session so UI stays in sync
-  useEffect(() => {
-    if (!currentSession || typeof currentSession.id !== 'string') return undefined;
-    const channel = sb.subscribeToMeeting(currentSession.id, {
-      onMeeting: () => refreshFromStorage(),
-      onMotions: () => refreshFromStorage(),
-      onVotes: () => refreshFromStorage(),
-      onChats: () => refreshFromStorage(),
-      onAttendees: () => refreshFromStorage()
-    });
-
-    return () => {
-      try {
-        if (channel && typeof channel.unsubscribe === 'function') channel.unsubscribe();
-      } catch (e) { /* ignore */ }
-    };
-  }, [currentSession && currentSession.id]);
+  
 
   // --- Sub-motion helpers & utilities ---
   // Utility: refresh local state from storage
@@ -327,6 +312,15 @@ function Coordination() {
       })();
     }
     };
+
+  // subscribe to realtime updates using reusable hook; keeps UI in sync without reloading
+  useMeetingRealtime(currentSession && currentSession.id, {
+    onMeeting: () => refreshFromStorage(),
+    onMotions: () => refreshFromStorage(),
+    onVotes: () => refreshFromStorage(),
+    onChats: () => refreshFromStorage(),
+    onAttendees: () => refreshFromStorage()
+  });
 
     // Handler: user selected a meeting from the dropdown
     const handleSelectMeeting = async (meetingId) => {

@@ -11,6 +11,7 @@ import {
   declineInvite,
   getMeetingAttendees,
   removeMeetingAttendee
+  ,subscribeToMyAttendees
 } from '../services/supabaseDataManager';
 import { useAuth } from '../contexts/AuthContext';
 import AddMeetingForm from '../components/meetings/AddMeetingForm';
@@ -69,6 +70,26 @@ function Meetings() {
       }
     })();
   }, [user]);
+
+  // Subscribe to changes on this user's attendee rows so meetings list updates in near real-time
+  useEffect(() => {
+    if (!user || !user.id) return undefined;
+    const ch = subscribeToMyAttendees(user.id, async () => {
+      try {
+        await loadMeetings();
+        const { data } = await getMyInvitations();
+        setPendingInvites(data || []);
+      } catch (e) {
+        console.error('Realtime attendee subscription handler error', e);
+      }
+    });
+
+    return () => {
+      try {
+        if (ch && typeof ch.unsubscribe === 'function') ch.unsubscribe();
+      } catch (e) { /* ignore */ }
+    };
+  }, [user && user.id]);
 
   const handleAddMeeting = async (event) => {
     event.preventDefault();
@@ -220,13 +241,9 @@ function Meetings() {
     }
   };
 
-  const handleLeave = async (meeting) => {
-    // owners must transfer ownership before leaving
-    if (meeting?.my_role === 'owner') {
-      return alert('You are the owner. Transfer ownership to another user before leaving.');
-    }
+  const handleLeave = async (meetingId) => {
     if (!window.confirm('Leave this meeting?')) return;
-    const { error } = await leaveMeeting(meeting.id);
+    const { error } = await leaveMeeting(meetingId);
     if (error) {
       console.error(error);
       alert('Failed to leave meeting');
@@ -279,9 +296,9 @@ function Meetings() {
             attendeesError={attendeesError}
             toggleShowAttendees={toggleShowAttendees}
             handleLeave={handleLeave}
-            refreshMeetings={loadMeetings}
             handleAcceptInvite={handleAcceptInvite}
             handleRemoveAttendee={handleRemoveAttendee}
+            refreshMeetings={loadMeetings}
           />
         ))}
       </div>
