@@ -9,12 +9,12 @@ async function getUser() {
   return data?.user || null;
 }
 
-export async function createMeeting({ title, description = '', status = 'scheduled' }) {
+export async function createMeeting({ title, description = '', status = 'scheduled', coordination = {} }) {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');
   const { data, error } = await supabase
     .from('meetings')
-    .insert({ title, description, status, owner: user.id })
+    .insert({ title, description, status, owner: user.id, coordination })
     .select()
     .single();
   // If title uniqueness violated, normalize the error for the client

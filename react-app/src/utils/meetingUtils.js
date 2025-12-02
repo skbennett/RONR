@@ -1,5 +1,11 @@
 export const formatDate = (dateStr) => {
   if (!dateStr) return 'N/A';
+  // If it's a YYYY-MM-DD string, parse it directly to avoid timezone issues
+  if (typeof dateStr === 'string' && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = dateStr.split('-');
+    return new Date(year, month - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+  // Otherwise treat it as an ISO timestamp
   const dateObj = new Date(dateStr);
   return dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
@@ -7,6 +13,7 @@ export const formatDate = (dateStr) => {
 export const formatTime = (timeStr) => {
   if (!timeStr) return 'N/A';
   const [hourStr, minuteStr] = timeStr.split(":");
+  if (!hourStr || !minuteStr) return 'N/A';
   let hour = parseInt(hourStr, 10);
   const minute = parseInt(minuteStr, 10);
   const ampm = hour >= 12 ? "PM" : "AM";

@@ -9,7 +9,7 @@ function MeetingCard({ meeting, user, attendeesByMeeting, attendeesLoading, atte
       <div className="meeting-info">
         <div className="meeting-title">{meeting.title}</div>
         <div className="meeting-details">
-          Date: {formatDate(meeting.coordination?.date || meeting.created_at)} &nbsp;|&nbsp; Time: {formatTime(meeting.coordination?.time || '')}
+          Date: {formatDate(meeting.coordination?.date)} &nbsp;|&nbsp; Time: {formatTime(meeting.coordination?.time)}
         </div>
         <div style={{ fontSize: 12, color: '#666' }}>Role: {meeting.my_role || 'unknown'}</div>
       </div>
