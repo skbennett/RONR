@@ -2,6 +2,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import supabase from '../supabaseClient'
 
 function CreateAccount() {
   // --- STATE MANAGEMENT ---
@@ -42,15 +43,40 @@ function CreateAccount() {
       return;
     }
 
-    // --- 2. Supabase Auth Sign Up ---
+    // --- 1.5. Check if username is available ---
     setLoading(true)
+    try {
+      const { data: existingUsername } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .limit(1);
+      
+      if (existingUsername && existingUsername.length > 0) {
+        setLoading(false);
+        setError('Username is already taken. Please choose a different username.');
+        return;
+      }
+    } catch (err) {
+      console.error('Error checking username availability:', err);
+      // Continue with signup even if check fails
+    }
+
+    // --- 2. Supabase Auth Sign Up ---
     try {
       // Use Supabase signUp (email + password)
       const { data, error: signUpError } = await signUp(email, password, username)
 
       if (signUpError) {
-        // Supabase returns helpful error messages
-        setError(signUpError.message || 'Failed to create account. Please try again.')
+        // Parse the error message to provide better feedback
+        let errorMessage = signUpError.message || 'Failed to create account. Please try again.';
+        
+        // Check for common error patterns
+        if (errorMessage.includes('duplicate') || errorMessage.includes('unique constraint') || errorMessage.includes('profiles_username_unique')) {
+          errorMessage = 'Username is already taken. Please choose a different username.';
+        }
+        
+        setError(errorMessage)
         return
       }
 
@@ -60,7 +86,14 @@ function CreateAccount() {
       navigate('/login')
     } catch (err) {
       console.error('Registration error:', err)
-      setError('Failed to create account. Please try again.')
+      let errorMessage = 'Failed to create account. Please try again.';
+      
+      // Check error details
+      if (err.message && (err.message.includes('duplicate') || err.message.includes('unique constraint') || err.message.includes('profiles_username_unique'))) {
+        errorMessage = 'Username is already taken. Please choose a different username.';
+      }
+      
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
