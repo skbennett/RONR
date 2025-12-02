@@ -1,7 +1,9 @@
 import React from 'react';
 import { formatDate, formatTime } from '../../utils/meetingUtils';
+import OwnershipTransferButton from './OwnershipTransferButton';
+import DeleteMeetingButton from './DeleteMeetingButton';
 
-function MeetingCard({ meeting, user, attendeesByMeeting, attendeesLoading, attendeesError, toggleShowAttendees, handleLeave, handleAcceptInvite, handleRemoveAttendee }) {
+function MeetingCard({ meeting, user, attendeesByMeeting, attendeesLoading, attendeesError, toggleShowAttendees, handleLeave, handleAcceptInvite, handleRemoveAttendee, refreshMeetings }) {
   return (
     <div key={meeting.id} className="meeting-card">
       <div className="meeting-info">
@@ -21,7 +23,15 @@ function MeetingCard({ meeting, user, attendeesByMeeting, attendeesLoading, atte
         ) : (
           <button className="join-btn joined" disabled>Member</button>
         )}
-        <button className="remove-btn" onClick={() => handleLeave(meeting.id)}>Leave</button>
+        <button className="remove-btn" onClick={() => handleLeave(meeting)} disabled={meeting.my_role === 'owner'}>
+          Leave
+        </button>
+        {meeting.my_role === 'owner' && (
+          <>
+            <OwnershipTransferButton meeting={meeting} user={user} onSuccess={() => { if (refreshMeetings) refreshMeetings(); }} />
+            <DeleteMeetingButton meeting={meeting} onDeleted={() => { if (refreshMeetings) refreshMeetings(); }} />
+          </>
+        )}
       </div>
 
       {(meeting.my_role === 'owner' || meeting.my_role === 'chair') && (

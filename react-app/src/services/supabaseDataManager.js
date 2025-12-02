@@ -174,6 +174,38 @@ export async function leaveMeeting(meetingId) {
   return { error };
 }
 
+export async function deleteMeeting(meetingId) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // perform a delete of the meeting row. The RPC / policies should ensure only authorized callers can delete.
+  // This will cascade according to your DB constraints; if you require explicit cleanup, update this logic.
+  // request the deleted rows back so the client can confirm deletion
+  const { data, error } = await supabase.from('meetings').delete().match({ id: meetingId }).select();
+  return { data: data || null, error };
+}
+
+export async function exportMeetingMinutes(meetingId) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // fetch meeting history ordered chronologically
+  const [{ data: history, error: histErr }, attendeesRes] = await Promise.all([
+    supabase
+      .from('meeting_history')
+      .select('created_at, event_type, event')
+      .eq('meeting_id', meetingId)
+      .order('created_at', { ascending: true }),
+    // reuse existing RPC to fetch attendees with emails if available
+    getMeetingAttendees(meetingId)
+  ]);
+
+  // getMeetingAttendees returns { data, error }
+  const attendees = attendeesRes?.data || [];
+  const error = histErr || attendeesRes?.error || null;
+  return { data: { history: history || [], attendees }, error };
+}
+
 // fetch meeting data (motions, votes, chats, history) in one call set
 export async function fetchMeetingData(meetingId) {
   const meetingP = supabase.from('meetings').select('*').eq('id', meetingId).single();
