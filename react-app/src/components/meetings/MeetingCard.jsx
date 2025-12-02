@@ -61,7 +61,7 @@ function MeetingCard({ meeting, user, attendeesByMeeting, attendeesLoading, atte
                   {attendeesByMeeting[meeting.id].length === 0 && <li className="no-attendees">No attendees found.</li>}
                   {attendeesByMeeting[meeting.id].map(a => (
                     <li key={a.user_id} className="attendee-row">
-                      <span className="attendee-label">{a.email || a.user_id}</span>
+                      <span className="attendee-label">{a.username || a.email || a.user_id}</span>
                       {a.role && (
                         <span className={`role-badge ${a.role}`}>{a.role.charAt(0).toUpperCase() + a.role.slice(1)}</span>
                       )}

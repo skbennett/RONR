@@ -15,9 +15,9 @@ function InviteForm({ selectedMeetingId, setSelectedMeetingId, inviteIdentifier,
             ))}
         </select>
       </div>
-      <input placeholder="User Email" value={inviteIdentifier} onChange={(e) => setInviteIdentifier(e.target.value)} />
+      <input placeholder="Username or Email" value={inviteIdentifier} onChange={(e) => setInviteIdentifier(e.target.value)} />
       <button type="submit" disabled={inviteLoading}>{inviteLoading ? 'Sending...' : 'Send Invite'}</button>
-      <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>Enter the invitee's email. You can only invite a user if you are the chair/owner of the meeting.</div>
+      <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>Enter the invitee's username or email. You can only invite a user if you are the chair/owner of the meeting.</div>
     </form>
   );
 }
