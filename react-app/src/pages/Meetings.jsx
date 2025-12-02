@@ -220,9 +220,13 @@ function Meetings() {
     }
   };
 
-  const handleLeave = async (meetingId) => {
+  const handleLeave = async (meeting) => {
+    // owners must transfer ownership before leaving
+    if (meeting?.my_role === 'owner') {
+      return alert('You are the owner. Transfer ownership to another user before leaving.');
+    }
     if (!window.confirm('Leave this meeting?')) return;
-    const { error } = await leaveMeeting(meetingId);
+    const { error } = await leaveMeeting(meeting.id);
     if (error) {
       console.error(error);
       alert('Failed to leave meeting');
@@ -275,6 +279,7 @@ function Meetings() {
             attendeesError={attendeesError}
             toggleShowAttendees={toggleShowAttendees}
             handleLeave={handleLeave}
+            refreshMeetings={loadMeetings}
             handleAcceptInvite={handleAcceptInvite}
             handleRemoveAttendee={handleRemoveAttendee}
           />
