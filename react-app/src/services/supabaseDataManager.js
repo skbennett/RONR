@@ -9,12 +9,12 @@ async function getUser() {
   return data?.user || null;
 }
 
-export async function createMeeting({ title, description = '', status = 'scheduled' }) {
+export async function createMeeting({ title, description = '', status = 'scheduled', coordination = {} }) {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');
   const { data, error } = await supabase
     .from('meetings')
-    .insert({ title, description, status, owner: user.id })
+    .insert({ title, description, status, owner: user.id, coordination })
     .select()
     .single();
   // If title uniqueness violated, normalize the error for the client
@@ -206,33 +206,107 @@ export async function exportMeetingMinutes(meetingId) {
   return { data: { history: history || [], attendees }, error };
 }
 
+// Helper: fetch user emails by user IDs
+async function fetchUserEmails(userIds) {
+  if (!userIds || userIds.length === 0) return {};
+  
+  // Deduplicate
+  const uniqueIds = [...new Set(userIds)];
+  
+  // Fetch from auth.users using RLS-safe admin query
+  // Since we can't directly query auth.users from the client, we'll use a cached approach
+  // Store emails in a client-side cache
+  const emailCache = {};
+  
+  // For now, we'll return the userIds and rely on client-side data where available
+  // In production, you might want to create a users_profile table and sync emails
+  return emailCache;
+}
+
 // fetch meeting data (motions, votes, chats, history) in one call set
 export async function fetchMeetingData(meetingId) {
   const meetingP = supabase.from('meetings').select('*').eq('id', meetingId).single();
   const motionsP = supabase.from('motions').select('*').eq('meeting_id', meetingId).order('created_at', { ascending: true });
   const chatsP = supabase.from('chats').select('*').eq('meeting_id', meetingId).order('created_at', { ascending: true });
   const historyP = supabase.from('meeting_history').select('*').eq('meeting_id', meetingId).order('created_at', { ascending: true });
+  const attendeesP = getMeetingAttendees(meetingId);
 
-  const [{ data: meeting }, { data: motions }, { data: chats }, { data: history }] = await Promise.all([meetingP, motionsP, chatsP, historyP]);
+  const [{ data: meeting }, { data: motions }, { data: chats }, { data: history }, attendeesRes] = await Promise.all([meetingP, motionsP, chatsP, historyP, attendeesP]);
+
+  // Build email map from attendees
+  let emailMap = {};
+  if (attendeesRes && attendeesRes.data) {
+    (attendeesRes.data || []).forEach(a => {
+      if (a.user_id && a.email) {
+        emailMap[a.user_id] = a.email;
+      }
+    });
+  }
+
+  // Collect all unique user IDs from motions, replies, and chats
+  const uniqueUserIds = new Set();
+  (motions || []).forEach(m => {
+    if (m.proposer) uniqueUserIds.add(m.proposer);
+  });
+  (chats || []).forEach(c => {
+    if (c.user_id) uniqueUserIds.add(c.user_id);
+  });
+
+  // Also fetch all motion replies to get authors
+  const motionIds = (motions || []).map(m => m.id);
+  let replies = [];
+  if (motionIds.length) {
+    const { data: r } = await supabase.from('motion_replies').select('*').in('motion_id', motionIds).order('created_at', { ascending: true });
+    replies = r || [];
+    (replies || []).forEach(r => {
+      if (r.author) uniqueUserIds.add(r.author);
+    });
+  }
+
+  // Fetch emails for any users not in attendee list
+  const missingUserIds = Array.from(uniqueUserIds).filter(id => !emailMap[id]);
+  if (missingUserIds.length > 0) {
+    // Query auth.users via RPC or via meeting_attendees (if they're attendees)
+    // For now, try to get them from meeting_attendees as a fallback
+    const { data: additionalAttendees } = await supabase.rpc('get_meeting_attendees', { meeting: meetingId });
+    if (additionalAttendees) {
+      (additionalAttendees || []).forEach(a => {
+        if (a.user_id && a.email) {
+          emailMap[a.user_id] = a.email;
+        }
+      });
+    }
+  }
 
   // attach vote counts per motion
-  const motionIds = (motions || []).map(m => m.id);
   let votes = [];
   if (motionIds.length) {
     const { data: v } = await supabase.from('votes').select('*').in('motion_id', motionIds);
     votes = v || [];
   }
 
-  // fetch motion replies and attach to motions
-  let replies = [];
-  if (motionIds.length) {
-    const { data: r } = await supabase.from('motion_replies').select('*').in('motion_id', motionIds).order('created_at', { ascending: true });
-    replies = r || [];
-  }
+  // Enrich motions with proposer emails
+  const motionsWithReplies = (motions || []).map(m => {
+    const motionReplies = (replies || []).filter(rr => rr.motion_id === m.id);
+    // Enrich replies with author emails
+    const enrichedReplies = motionReplies.map(r => ({
+      ...r,
+      author_email: emailMap[r.author] || 'Unknown User'
+    }));
+    return {
+      ...m,
+      proposer_email: emailMap[m.proposer] || 'Unknown User',
+      replies: enrichedReplies
+    };
+  });
 
-  const motionsWithReplies = (motions || []).map(m => ({ ...m, replies: (replies || []).filter(rr => rr.motion_id === m.id) }));
+  // Enrich chats with user emails
+  const enrichedChats = (chats || []).map(c => ({
+    ...c,
+    user_email: emailMap[c.user_id] || 'Unknown User'
+  }));
 
-  return { meeting, motions: motionsWithReplies, votes, chats: chats || [], history: history || [] };
+  return { meeting, motions: motionsWithReplies, votes, chats: enrichedChats, history: history || [] };
 }
 
 export async function proposeMotion(meetingId, title, description = '') {

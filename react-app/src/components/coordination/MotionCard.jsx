@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatCreatedAt } from '../../utils/meetingUtils';
 
 const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
   const { user } = useAuth();
@@ -8,6 +9,11 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
   const userVote = motion.userVotes ? motion.userVotes[currentUser] : undefined;
   const hasVoted = Boolean(userVote);
   const canUndo = isUndoAllowed ? isUndoAllowed(motion, currentUser) : hasVoted;
+  
+  // Get proposer email from motion data
+  const proposerEmail = motion.proposer_email || 'Unknown User';
+  const createdAt = formatCreatedAt(motion.created_at || motion.createdAt);
+  
   return (
     <div className="motion-card">
       <div className="motion-header">
@@ -23,7 +29,7 @@ const MotionCard = ({ motion, onVote, onUndoVote, isUndoAllowed }) => {
       </div>
       {motion.description && <div className="motion-description">{motion.description}</div>}
       <div className="motion-meta">
-        Proposed by: {motion.createdBy} | {new Date(motion.createdAt).toLocaleString()}
+        Proposed by: {proposerEmail} | {createdAt}
       </div>
       {motion.status === 'voting' && (
         <div className="voting-section">
