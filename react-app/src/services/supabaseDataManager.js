@@ -306,7 +306,7 @@ export async function fetchMeetingData(meetingId) {
     user_email: emailMap[c.user_id] || 'Unknown User'
   }));
 
-  return { meeting, motions: motionsWithReplies, votes, chats: enrichedChats, history: history || [] };
+  return { meeting, motions: motionsWithReplies, votes, chats: enrichedChats, history: history || [], emailMap };
 }
 
 export async function proposeMotion(meetingId, title, description = '') {
