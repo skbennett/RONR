@@ -8,6 +8,7 @@ import './coordination.css';
 import MotionCard from '../components/coordination/MotionCard';
 import MotionForm from '../components/coordination/MotionForm';
 import VotingHistory from '../components/coordination/VotingHistory';
+import MeetingSelector from '../components/coordination/MeetingSelector';
 
 
 // --- The Main Coordination Page Component ---
@@ -16,6 +17,7 @@ function Coordination() {
   const [currentSession, setCurrentSession] = useState(null);
   const [activeMotions, setActiveMotions] = useState([]);
   const [votingHistory, setVotingHistory] = useState([]);
+  const [userMeetingsList, setUserMeetingsList] = useState([]);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [motionTitle, setMotionTitle] = useState('');
   const [motionDescription, setMotionDescription] = useState('');
@@ -242,6 +244,7 @@ function Coordination() {
       try {
         if (user && user.id) {
           const { data: userMeetings, error } = await sb.getUserMeetings();
+          setUserMeetingsList(userMeetings || []);
           if (!error && Array.isArray(userMeetings)) {
             // prefer meetings where the signed-in user is the owner
             const owned = userMeetings.find(m => (m.owner && m.owner === user.id) || (m.my_role && m.my_role === 'owner'));
@@ -323,7 +326,24 @@ function Coordination() {
         }
       })();
     }
-  };
+    };
+
+    // Handler: user selected a meeting from the dropdown
+    const handleSelectMeeting = async (meetingId) => {
+      if (!meetingId) return;
+      try {
+        // set a lightweight current session while fetching
+        setCurrentSession({ id: meetingId, name: `Meeting ${meetingId}`, startTime: new Date().toISOString() });
+        const res = await sb.fetchMeetingData(meetingId);
+        const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
+        setActiveMotions(filterActiveMotions(mapped));
+        setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+        setCurrentSession(res.meeting || { id: meetingId });
+      } catch (e) {
+        console.error('handleSelectMeeting failed', e);
+        alert('Failed to select meeting');
+      }
+      };
 
   const showSubForm = (id) => setSubFormVisible(prev => ({ ...prev, [id]: true }));
   const cancelSubForm = (id) => {
@@ -840,6 +860,7 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
       {/* --- Session Status --- */}
       <section className="session-status">
         <h3>Session Status</h3>
+        <MeetingSelector meetings={userMeetingsList} selectedMeetingId={currentSession?.id} onSelectMeeting={handleSelectMeeting} />
         <div id="session-info">
           {currentSession ? (
             <>
