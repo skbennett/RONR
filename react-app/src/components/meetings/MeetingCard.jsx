@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatDate, formatTime } from '../../utils/meetingUtils';
 import OwnershipTransferButton from './OwnershipTransferButton';
+import DeleteMeetingButton from './DeleteMeetingButton';
 
 function MeetingCard({ meeting, user, attendeesByMeeting, attendeesLoading, attendeesError, toggleShowAttendees, handleLeave, handleAcceptInvite, handleRemoveAttendee, refreshMeetings }) {
   return (
@@ -26,7 +27,10 @@ function MeetingCard({ meeting, user, attendeesByMeeting, attendeesLoading, atte
           Leave
         </button>
         {meeting.my_role === 'owner' && (
-          <OwnershipTransferButton meeting={meeting} user={user} onSuccess={() => { if (refreshMeetings) refreshMeetings(); }} />
+          <>
+            <OwnershipTransferButton meeting={meeting} user={user} onSuccess={() => { if (refreshMeetings) refreshMeetings(); }} />
+            <DeleteMeetingButton meeting={meeting} onDeleted={() => { if (refreshMeetings) refreshMeetings(); }} />
+          </>
         )}
       </div>
 
