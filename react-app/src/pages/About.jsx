@@ -17,10 +17,11 @@ function About() {
       {/* 2. Narrative Section (The text you centered earlier) */}
       <section className="about-narrative">
         <p className="mission-statement">
-          CourtOrder helps organizations run structured, efficient meetings by following Robert's Rules of Order, 
-          streamlining motions, debates, and votes into one easy platform. It helps manage teams to stay organized 
-          and make decisions democratically. As well as keeping meetings on track, CourtOrder fosters transparency 
-          and inclusivity in decision-making.
+          Following Robert's Rules of Order (RONR), our web app aims to streamline meetings by providing 
+          meeting scheduling, sctructured motions, real time chatting, and voting functionalities to ensure efficient and RONR compliant decision-making.
+        </p>
+        <p className="names-list">
+          Created By - Jason, Keegan, and Shane
         </p>
       </section>
 
@@ -33,12 +34,11 @@ function About() {
           </div>
           <div className="grid-item">
             <h3>Our Story</h3>
-            <p>Founded in 2025, CourtOrder was created by a group of passionate organizers who saw the need for a modern solution to classic meeting challenges.</p>
+            <p>CourtOrder was created as a project for CSCI 432 (Web Development) at William and Mary in Fall 2025.</p>
           </div>
           <div className="grid-item">
-            <h3>Get in Touch</h3>
-            <p>Email: <a href="mailto:support@courtorder.com">support@courtorder.com</a></p>
-            <p>Twitter: @CourtOrderApp</p>
+            <h3>Check It Out</h3>
+            <p>Github: <a href="https://github.com/skbennett/RONR">https://github.com/skbennett/RONR</a></p>
           </div>
         </div>
       </section>
