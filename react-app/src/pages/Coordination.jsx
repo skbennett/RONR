@@ -10,6 +10,7 @@ import MotionCard from '../components/coordination/MotionCard';
 import MotionForm from '../components/coordination/MotionForm';
 import VotingHistory from '../components/coordination/VotingHistory';
 import MeetingSelector from '../components/coordination/MeetingSelector';
+import { formatDateTime, formatCreatedAt } from '../utils/meetingUtils';
 
 
 // --- The Main Coordination Page Component ---
@@ -255,7 +256,13 @@ function Coordination() {
             // prefer meetings where the signed-in user is the owner
             const owned = userMeetings.find(m => (m.owner && m.owner === user.id) || (m.my_role && m.my_role === 'owner'));
             if (owned) {
-              const sess = { id: owned.id, name: owned.title || owned.name || `Meeting ${owned.id}`, startTime: owned.created_at || new Date().toISOString() };
+              const sess = { 
+                id: owned.id, 
+                name: owned.title || owned.name || `Meeting ${owned.id}`, 
+                startTime: owned.coordination?.date && owned.coordination?.time ? 
+                  formatDateTime(owned.coordination.date, owned.coordination.time) :
+                  formatCreatedAt(owned.created_at)
+              };
               setCurrentSession(sess);
               const res = await sb.fetchMeetingData(sess.id);
               const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
@@ -267,7 +274,13 @@ function Coordination() {
             // If user has meetings but none owned, pick the first they participate in
             if ((userMeetings || []).length > 0) {
               const first = userMeetings[0];
-              const sess = { id: first.id, name: first.title || first.name || `Meeting ${first.id}`, startTime: first.created_at || new Date().toISOString() };
+              const sess = { 
+                id: first.id, 
+                name: first.title || first.name || `Meeting ${first.id}`, 
+                startTime: first.coordination?.date && first.coordination?.time ?
+                  formatDateTime(first.coordination.date, first.coordination.time) :
+                  formatCreatedAt(first.created_at)
+              };
               const res = await sb.fetchMeetingData(sess.id);
               const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
               setCurrentSession(res.meeting || sess);
@@ -278,7 +291,11 @@ function Coordination() {
             // If the user has no meetings at all, create one automatically so coordination works
             const { data: created, error: createErr } = await sb.createMeeting({ title: `Meeting ${user.id.substring(0,8)}`, description: '' });
             if (!createErr && created && created.id) {
-              const sess = { id: created.id, name: created.title || `Meeting ${created.id}`, startTime: created.created_at || new Date().toISOString() };
+              const sess = { 
+                id: created.id, 
+                name: created.title || `Meeting ${created.id}`, 
+                startTime: formatCreatedAt(created.created_at)
+              };
               const res = await sb.fetchMeetingData(sess.id);
               const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
               setCurrentSession(res.meeting || sess);
@@ -720,7 +737,7 @@ function Coordination() {
         try {
           const { data, error } = await sb.createMeeting({ title: sessionName, description: '' });
           if (error || !data) { alert('Failed to create meeting'); console.error(error); return; }
-          const sess = { id: data.id, name: data.title || sessionName, startTime: data.created_at || new Date().toISOString() };
+          const sess = { id: data.id, name: data.title || sessionName, startTime: formatCreatedAt(data.created_at) };
           setCurrentSession(sess);
           // load meeting
           const res = await sb.fetchMeetingData(sess.id);
@@ -995,7 +1012,7 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
             <>
               <div>
                 <p>Active Session: {currentSession.name}</p>
-                <p style={{ fontSize: '12px', color: '#666' }}>Started: {new Date(currentSession.startTime).toLocaleString()}</p>
+                <p style={{ fontSize: '12px', color: '#666' }}>Started: {currentSession.startTime}</p>
               </div>
               <div>
                 <button ref={newMotionBtnRef} className="primary-btn" onClick={handleToggleNewMotion}>New Motion</button>
@@ -1140,10 +1157,10 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
                                   r.stance === 'con' ? { background: '#fdecea', color: '#a10b0b', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 } :
                                   { background: '#f2f2f2', color: '#666', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }
                                 }>{r.stance.toUpperCase()}</div>
-                                <div style={{ fontSize: 12, color: '#666' }}>{r.createdBy} @ {new Date(r.createdAt).toLocaleString()}</div>
+                                <div style={{ fontSize: 12, color: '#666' }}>{r.author_email || 'Unknown User'} @ {formatCreatedAt(r.created_at)}</div>
                               </div>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 8 }}>
-                                {r.createdBy === currentUser && (
+                                {r.author === currentUser && (
                                   <>
                                     <button className="secondary-btn" onClick={() => showReplyEditForm(motion.id, r)}>Edit</button>
                                     <button className="secondary-btn" onClick={() => handleDeleteReply(motion.id, r.id)}>Delete</button>
@@ -1239,8 +1256,8 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
             chatMessages.map((msg) => (
               <div key={msg.id} style={{ marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #eee' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <strong style={{ fontSize: '12px' }}>{msg.user_id || 'Unknown'}</strong>
-                  <span style={{ fontSize: '11px', color: '#999' }}>{new Date(msg.created_at).toLocaleTimeString()}</span>
+                  <strong style={{ fontSize: '12px' }}>{msg.user_email || 'Unknown User'}</strong>
+                  <span style={{ fontSize: '11px', color: '#999' }}>{formatCreatedAt(msg.created_at)}</span>
                 </div>
                 <div style={{ fontSize: '14px', color: '#333' }}>{msg.message}</div>
               </div>
