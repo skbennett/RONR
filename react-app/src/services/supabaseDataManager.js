@@ -382,27 +382,56 @@ export async function sendChat(meetingId, message, meta = {}) {
   return { data, error };
 }
 
-// Subscribe to meeting-specific realtime events. handlers: { onMeeting, onMotions, onVotes, onChats, onAttendees }
+// Subscribe to meeting-specific realtime events. handlers: { onMeeting, onMotions, onHistory, onChats, onAttendees }
 export function subscribeToMeeting(meetingId, handlers = {}) {
   const channel = supabase.channel(`meeting:${meetingId}`);
+  console.log(`[sb] Creating realtime channel for meeting ${meetingId}`);
 
   if (handlers.onMeeting) {
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'meetings', filter: `id=eq.${meetingId}` }, payload => handlers.onMeeting(payload));
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'meetings', filter: `id=eq.${meetingId}` }, payload => {
+      console.log('[sb] onMeeting payload:', payload);
+      handlers.onMeeting(payload);
+    });
   }
   if (handlers.onMotions) {
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'motions', filter: `meeting_id=eq.${meetingId}` }, payload => handlers.onMotions(payload));
-  }
-  if (handlers.onVotes) {
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `motion_id=like.*` }, payload => handlers.onVotes(payload));
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'motions', filter: `meeting_id=eq.${meetingId}` }, payload => {
+      console.log('[sb] onMotions payload:', payload);
+      handlers.onMotions(payload);
+    });
   }
   if (handlers.onChats) {
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'chats', filter: `meeting_id=eq.${meetingId}` }, payload => handlers.onChats(payload));
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'chats', filter: `meeting_id=eq.${meetingId}` }, payload => {
+      console.log('[sb] onChats payload:', payload);
+      handlers.onChats(payload);
+    });
+  }
+  // Listen to canonical meeting_history rows for this meeting. Many actions write into
+  // meeting_history (votes, chat, motion lifecycle events). Subscribing here lets the
+  // client update a single canonical stream and then fetch as-needed.
+  if (handlers.onHistory) {
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'meeting_history', filter: `meeting_id=eq.${meetingId}` }, payload => {
+      console.log('[sb] onHistory payload:', payload);
+      handlers.onHistory(payload);
+    });
   }
   if (handlers.onAttendees) {
-    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'meeting_attendees', filter: `meeting_id=eq.${meetingId}` }, payload => handlers.onAttendees(payload));
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'meeting_attendees', filter: `meeting_id=eq.${meetingId}` }, payload => {
+      console.log('[sb] onAttendees payload:', payload);
+      handlers.onAttendees(payload);
+    });
   }
 
-  channel.subscribe();
+  channel.subscribe((status) => {
+    console.log(`[sb] Channel subscription status for meeting ${meetingId}:`, status);
+    if (status === 'SUBSCRIBED') {
+      console.log(`[sb] Successfully subscribed to meeting ${meetingId}`);
+    } else if (status === 'CHANNEL_ERROR') {
+      console.error(`[sb] Channel error for meeting ${meetingId}`);
+    } else if (status === 'TIMED_OUT') {
+      console.error(`[sb] Channel subscription timed out for meeting ${meetingId}`);
+    }
+  });
+  
   return channel;
 }
 

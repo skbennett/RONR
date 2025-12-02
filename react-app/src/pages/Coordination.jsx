@@ -50,6 +50,11 @@ function Coordination() {
   // History voters toggles (id -> bool)
   const [historyVotersOpen, setHistoryVotersOpen] = useState({});
 
+  // Chat messages state
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const chatEndRef = useRef(null);
+
   const toggleHistoryDiscussion = (id) => {
     setHistoryDiscussionOpen(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -305,6 +310,7 @@ function Coordination() {
           const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
           setActiveMotions(filterActiveMotions(mapped));
           setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+          setChatMessages(res.chats || []);
           setCurrentSession(res.meeting || sess);
         } catch (e) {
           console.error('refreshFromStorage failed', e);
@@ -313,13 +319,119 @@ function Coordination() {
     }
     };
 
-  // subscribe to realtime updates using reusable hook; keeps UI in sync without reloading
+  // Subscribe to realtime updates using reusable hook
+  // The meeting_history stream is the canonical event source for all meeting changes:
+  // motions, votes, chats, etc. This ensures consistency and prevents duplicate/conflicting updates.
   useMeetingRealtime(currentSession && currentSession.id, {
-    onMeeting: () => refreshFromStorage(),
-    onMotions: () => refreshFromStorage(),
-    onVotes: () => refreshFromStorage(),
-    onChats: () => refreshFromStorage(),
-    onAttendees: () => refreshFromStorage()
+    onMeeting: (payload) => {
+      const rec = payload.record || payload.new || payload;
+      if (rec) setCurrentSession(prev => ({ ...(prev || {}), ...rec }));
+    },
+    onMotions: (payload) => {
+      const op = (payload.eventType || payload.event || payload.type || '').toString().toUpperCase() || (payload.new ? 'INSERT' : payload.old ? 'DELETE' : 'UPDATE');
+      const rec = payload.record || payload.new || payload.old || payload;
+      if (!rec || !rec.id) return refreshFromStorage();
+      setActiveMotions(prev => {
+        try {
+          if (op === 'INSERT') {
+            const m = { ...rec, status: rec.status === 'open' ? 'voting' : rec.status, votes: { for: 0, against: 0, abstain: 0 }, userVotes: {}, voters: [], replies: rec.replies || [] };
+            return filterActiveMotions([m].concat(prev || []));
+          } else if (op === 'UPDATE') {
+            return filterActiveMotions((prev || []).map(pm => pm.id === rec.id ? { ...pm, ...rec } : pm));
+          } else if (op === 'DELETE') {
+            return (prev || []).filter(pm => pm.id !== rec.id);
+          }
+        } catch (e) {
+          console.error('onMotions handler failed, falling back to full refresh', e);
+          refreshFromStorage();
+        }
+        return prev;
+      });
+    },
+    onChats: (payload) => {
+      // Handle new chat messages in real-time without full refresh
+      const op = (payload.eventType || payload.event || payload.type || '').toString().toUpperCase() || (payload.new ? 'INSERT' : payload.old ? 'DELETE' : 'UPDATE');
+      const rec = payload.record || payload.new || payload.old || payload;
+      if (!rec || !rec.id) return refreshFromStorage();
+      
+      if (op === 'INSERT') {
+        // Add new chat message to the list
+        setChatMessages(prev => [...(prev || []), rec]);
+        // Auto-scroll to bottom on new message
+        setTimeout(() => { if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, 0);
+      } else if (op === 'DELETE') {
+        // Remove deleted chat
+        setChatMessages(prev => (prev || []).filter(c => c.id !== rec.id));
+      } else if (op === 'UPDATE') {
+        // Update modified chat (e.g., edited message)
+        setChatMessages(prev => (prev || []).map(c => c.id === rec.id ? rec : c));
+      }
+    },
+    // meeting_history is the canonical event stream for all meeting actions
+    // (motion_proposed, vote_cast, chat, motion_closed, etc.).
+    // Process vote_cast events for live vote tally updates, fall back to full refresh for other events.
+    onHistory: (payload) => {
+      try { console.debug('[Coordination] onHistory payload', payload); } catch (e) {}
+      try {
+        const op = (payload.eventType || payload.event || payload.type || '').toString().toUpperCase() || (payload.new ? 'INSERT' : payload.old ? 'DELETE' : 'UPDATE');
+        const rec = payload.record || payload.new || payload;
+        // Only handle INSERT events (new history entries)
+        if (op === 'INSERT' && rec && rec.event_type) {
+          const et = (rec.event_type || '').toString();
+          // vote_cast events: update vote tallies in real-time without full refresh
+          if (et === 'vote_cast' && rec.event) {
+            try {
+              const ev = typeof rec.event === 'string' ? JSON.parse(rec.event) : rec.event;
+              const mid = ev.motion_id || ev.motionId || ev.motion;
+              const uid = ev.user_id || ev.userId || ev.user;
+              const choice = (ev.choice || '').toString().toLowerCase();
+              if (mid && uid && choice) {
+                // Update activeMotions counts and voters
+                setActiveMotions(prev => (prev || []).map(m => {
+                  if (m.id !== mid) return m;
+                  const copy = { ...m, votes: { ...(m.votes || { for: 0, against: 0, abstain: 0 }) }, userVotes: { ...(m.userVotes || {}) }, voters: Array.isArray(m.voters) ? [...m.voters] : [] };
+                  const prevVote = copy.userVotes && copy.userVotes[uid];
+                  const dec = (v) => { if (v === 'yes' || v === 'for') copy.votes.for = Math.max(0, (copy.votes.for || 0) - 1); else if (v === 'no' || v === 'against') copy.votes.against = Math.max(0, (copy.votes.against || 0) - 1); else copy.votes.abstain = Math.max(0, (copy.votes.abstain || 0) - 1); };
+                  const inc = (v) => { if (v === 'yes' || v === 'for') copy.votes.for = (copy.votes.for || 0) + 1; else if (v === 'no' || v === 'against') copy.votes.against = (copy.votes.against || 0) + 1; else copy.votes.abstain = (copy.votes.abstain || 0) + 1; };
+                  if (prevVote) dec(prevVote);
+                  inc(choice);
+                  copy.userVotes[uid] = (choice === 'yes' ? 'for' : choice === 'no' ? 'against' : 'abstain');
+                  if (!copy.voters.includes(uid)) copy.voters.push(uid);
+                  return copy;
+                }));
+
+                // Update votingHistory similarly
+                setVotingHistory(prev => (prev || []).map(item => {
+                  if (item.id !== mid) return item;
+                  const copy = { ...item, votes: { ...(item.votes || { for: 0, against: 0, abstain: 0 }) }, userVotes: { ...(item.userVotes || {}) }, voters: Array.isArray(item.voters) ? [...item.voters] : [] };
+                  const prevVote = copy.userVotes && copy.userVotes[uid];
+                  const dec = (v) => { if (v === 'for') copy.votes.for = Math.max(0, (copy.votes.for || 0) - 1); else if (v === 'against') copy.votes.against = Math.max(0, (copy.votes.against || 0) - 1); else copy.votes.abstain = Math.max(0, (copy.votes.abstain || 0) - 1); };
+                  const inc = (v) => { if (v === 'for') copy.votes.for = (copy.votes.for || 0) + 1; else if (v === 'against') copy.votes.against = (copy.votes.against || 0) + 1; else copy.votes.abstain = (copy.votes.abstain || 0) + 1; };
+                  if (prevVote) dec(prevVote);
+                  const mapped = (choice === 'yes' ? 'for' : choice === 'no' ? 'against' : 'abstain');
+                  inc(mapped);
+                  copy.userVotes[uid] = mapped;
+                  if (!copy.voters.includes(uid)) copy.voters.push(uid);
+                  return copy;
+                }));
+                return; // Vote event handled without full refresh
+              }
+            } catch (e) {
+              console.error('Failed to parse vote_cast event', e);
+            }
+          }
+        }
+        // For all other history changes (motion closed, postponed, etc.), do a full refresh
+        refreshFromStorage();
+      } catch (e) {
+        console.error('onHistory handler failed', e);
+        refreshFromStorage();
+      }
+    },
+    onAttendees: (payload) => {
+      // Attendee changes can affect roles/visibility; refresh meeting state
+      try { refreshFromStorage(); } catch (e) { console.error('onAttendees handler failed', e); }
+    }
   });
 
     // Handler: user selected a meeting from the dropdown
@@ -847,6 +959,29 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
     return Boolean(motion.userVotes && motion.userVotes[username]);
   };
 
+  const handleSendChat = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    if (!currentSession || !currentSession.id) {
+      alert('No active session. Please start or select a session first.');
+      return;
+    }
+    try {
+      const { data, error } = await sb.sendChat(currentSession.id, chatInput.trim());
+      if (error) {
+        alert('Failed to send message');
+        console.error(error);
+        return;
+      }
+      setChatInput('');
+      // Auto-scroll to bottom after sending
+      setTimeout(() => { if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, 0);
+    } catch (e) {
+      console.error('Error sending chat', e);
+      alert('Failed to send message');
+    }
+  };
+
   return (
     <div className="coordination-container">
       <h2>Coordination Session</h2>
@@ -1095,6 +1230,39 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
         handleDeleteHistory={handleDeleteHistory}
         handleClearHistory={handleClearHistory}
       />
+
+      {/* --- Chat Section --- */}
+      <section className="chat-section" style={{ marginTop: '30px', borderTop: '1px solid #ddd', paddingTop: '20px' }}>
+        <h3>Meeting Chat</h3>
+        <div className="chat-messages" style={{ border: '1px solid #ddd', borderRadius: '8px', height: '300px', overflowY: 'auto', padding: '12px', marginBottom: '12px', backgroundColor: '#f9f9f9' }}>
+          {(chatMessages && chatMessages.length > 0) ? (
+            chatMessages.map((msg) => (
+              <div key={msg.id} style={{ marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #eee' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <strong style={{ fontSize: '12px' }}>{msg.user_id || 'Unknown'}</strong>
+                  <span style={{ fontSize: '11px', color: '#999' }}>{new Date(msg.created_at).toLocaleTimeString()}</span>
+                </div>
+                <div style={{ fontSize: '14px', color: '#333' }}>{msg.message}</div>
+              </div>
+            ))
+          ) : (
+            <div style={{ color: '#999', fontStyle: 'italic', textAlign: 'center', paddingTop: '130px' }}>No messages yet. Start the conversation!</div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+        <form onSubmit={handleSendChat} style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            placeholder="Type a message..."
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            className="form-input"
+            style={{ flex: 1 }}
+            disabled={!currentSession}
+          />
+          <button type="submit" className="primary-btn" disabled={!currentSession || !chatInput.trim()}>Send</button>
+        </form>
+      </section>
     </div>
   );
 }
