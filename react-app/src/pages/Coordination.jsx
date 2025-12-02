@@ -73,6 +73,15 @@ function Coordination() {
     const isChair = currentSession.my_role === 'chair' || currentSession.role === 'chair';
     return isOwner || isChair;
   };
+
+  // Helper: check if current user can edit a motion (proposer or chair)
+  const canEditMotion = (motion) => {
+    if (!motion || !user) return false;
+    const uid = user.id;
+    const isProposer = motion.proposer === uid;
+    const isChair = isOwnerOrChair();
+    return isProposer || isChair;
+  };
   
   // Helper: map motions + votes (DB shape) into the frontend shape used by this page
   const mapMotionsWithVotes = (motions, votes) => {
@@ -549,10 +558,19 @@ function Coordination() {
     if (!vals.title || vals.title.trim() === '') { alert('Please enter a title.'); return; }
     if (currentSession && typeof currentSession.id === 'string') {
       (async () => {
-        const { data, error } = await sb.updateMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
-        if (error) { alert('Failed to update motion.'); console.error(error); return; }
-        cancelEditForm(motionId);
-        refreshFromStorage();
+        try {
+          const { data, error } = await sb.updateMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
+          if (error) { 
+            console.error('Update motion error:', error);
+            alert('Failed to update motion. You may not have permission to edit this motion.'); 
+            return; 
+          }
+          cancelEditForm(motionId);
+          refreshFromStorage();
+        } catch (e) {
+          console.error('Update motion exception:', e);
+          alert('Failed to update motion: ' + (e.message || 'Unknown error'));
+        }
       })();
     } else {
       alert('No active remote meeting. Sign in or ensure a meeting exists.');
@@ -1139,8 +1157,10 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
                           )}
                         </>
                       )}
-          {/* Edit button shown for all motion states (moved outside the conditional) */}
-          <button className="secondary-btn" onClick={() => showEditForm(motion.id, motion)}>Edit</button>
+          {/* Edit button shown only to motion proposer or chair */}
+          {canEditMotion(motion) && (
+            <button className="secondary-btn" onClick={() => showEditForm(motion.id, motion)}>Edit</button>
+          )}
         </div>
                   </div>
                   {editFormVisible[motion.id] && (
@@ -1285,7 +1305,6 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
         handleClearHistory={handleClearHistory}
         emailMap={emailMap}
         isOwner={isOwnerOrChair()}
-      />
       />
 
       {/* --- Chat Section --- */}
