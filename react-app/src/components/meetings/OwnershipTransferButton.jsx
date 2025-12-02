@@ -73,7 +73,7 @@ function OwnershipTransferButton({ meeting, user, onSuccess }) {
             >
               <option value={-1} disabled>Select a user...</option>
               {(attendees || []).map((a, idx) => (
-                <option key={idx} value={idx}>{a.email ? `${a.email}` : `User ${idx + 1}`} {a.role ? ` — ${a.role}` : ''}</option>
+                <option key={idx} value={idx}>{a.username || a.email ? `${a.username || a.email}` : `User ${idx + 1}`} {a.role ? ` — ${a.role}` : ''}</option>
               ))}
             </select>
           </div>

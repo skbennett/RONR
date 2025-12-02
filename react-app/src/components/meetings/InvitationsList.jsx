@@ -15,7 +15,7 @@ function InvitationsList({ pendingInvites, meetings, handleAcceptInvite, handleD
               <div className="invite-item-left">
                 <div>Meeting: <span className="invite-meeting-title">{meetingTitle}</span></div>
                 <div className="invite-meta">Invited at {new Date(inv.created_at).toLocaleString()}</div>
-                <div className="invite-meta">Invited by: {inv.inviter_email || 'Unknown'}</div>
+              <div className="invite-meta">Invited by: {inv.inviter_username || inv.inviter_email || 'Unknown'}</div>
               </div>
               <div className="invite-actions">
                 <button className="primary-btn" onClick={() => handleAcceptInvite(inv.meeting_id)}>Accept</button>

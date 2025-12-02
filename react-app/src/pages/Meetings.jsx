@@ -7,6 +7,7 @@ import {
   leaveMeeting,
   inviteUser,
   inviteUserByEmail,
+  inviteUserByUsername,
   getMyInvitations,
   declineInvite,
   getMeetingAttendees,
@@ -154,36 +155,35 @@ function Meetings() {
 
   const handleSendInviteByEmail = async (e) => {
     e.preventDefault();
-    if (!inviteIdentifier) return alert('Enter the invitee user id (UUID) or email.');
+    if (!inviteIdentifier) return alert('Enter the invitee username, email, or user ID (UUID).');
     if (!selectedMeetingId) return alert('Select a meeting to invite the user to.');
     setInviteLoading(true);
     try {
+      let inviteResult;
+      
       // If the identifier looks like an email, call the backend RPC that accepts email
       if (inviteIdentifier.includes('@')) {
-        const { data, error } = await inviteUserByEmail(selectedMeetingId, inviteIdentifier);
-        if (error) {
-          console.error('inviteUserByEmail error', error);
-          alert('Failed to send invite by email: ' + (error.message || JSON.stringify(error)));
-        } else {
-          alert('Invite created');
-          setInviteIdentifier('');
-          const invites = await getMyInvitations();
-          setPendingInvites(invites.data || []);
-          await loadMeetings();
-        }
+        inviteResult = await inviteUserByEmail(selectedMeetingId, inviteIdentifier);
+      } 
+      // If it looks like a UUID (has dashes), call inviteUser directly
+      else if (inviteIdentifier.includes('-') && inviteIdentifier.length === 36) {
+        inviteResult = await inviteUser(selectedMeetingId, inviteIdentifier);
+      }
+      // Otherwise assume it's a username
+      else {
+        inviteResult = await inviteUserByUsername(selectedMeetingId, inviteIdentifier);
+      }
+      
+      const { data, error } = inviteResult;
+      if (error) {
+        console.error('Invite error', error);
+        alert('Failed to send invite: ' + (error.message || JSON.stringify(error)));
       } else {
-        // otherwise expect a UUID and call inviteUser
-        const { data, error } = await inviteUser(selectedMeetingId, inviteIdentifier);
-        if (error) {
-          console.error('inviteUser error', error);
-          alert('Failed to send invite: ' + (error.message || JSON.stringify(error)));
-        } else {
-          alert('Invite created');
-          setInviteIdentifier('');
-          const invites = await getMyInvitations();
-          setPendingInvites(invites.data || []);
-          await loadMeetings();
-        }
+        alert('Invite created');
+        setInviteIdentifier('');
+        const invites = await getMyInvitations();
+        setPendingInvites(invites.data || []);
+        await loadMeetings();
       }
     } catch (err) {
       console.error('Invite error', err);

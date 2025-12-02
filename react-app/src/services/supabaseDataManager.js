@@ -56,8 +56,15 @@ export async function inviteUser(meetingId, inviteeId) {
     console.error('Failed to fetch meeting title for invitation', e);
   }
 
-  // capture inviter email from the authenticated user object (if present)
+  // capture inviter email and username from the authenticated user object (if present)
   const inviterEmail = user?.email || null;
+  let inviterUsername = null;
+  try {
+    const { data: profileData } = await supabase.from('profiles').select('username').eq('id', user.id).single();
+    if (profileData && profileData.username) inviterUsername = profileData.username;
+  } catch (e) {
+    console.error('Failed to fetch inviter username for invitation', e);
+  }
 
   const { data, error } = await supabase.from('invitations').insert({
     meeting_id: meetingId,
@@ -65,7 +72,8 @@ export async function inviteUser(meetingId, inviteeId) {
     inviter: user.id,
     status: 'pending',
     meeting_title: meetingTitle,
-    inviter_email: inviterEmail
+    inviter_email: inviterEmail,
+    inviter_username: inviterUsername
   }).select().single();
 
   return { data, error };
@@ -81,11 +89,51 @@ export async function inviteUserByEmail(meetingId, inviteeEmail) {
   return { data, error };
 }
 
+// Invite by username using Postgres RPC `invite_user_by_username` (defined in Supabase SQL)
+export async function inviteUserByUsername(meetingId, inviteeUsername) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // call the RPC which will validate the caller and perform the insert as SECURITY DEFINER
+  const { data, error } = await supabase.rpc('invite_user_by_username', { meeting: meetingId, invite_username: inviteeUsername });
+  return { data, error };
+}
+
 export async function getMyInvitations() {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');
 
   const { data, error } = await supabase.from('invitations').select('*').eq('invitee', user.id).order('created_at', { ascending: false });
+  
+  // Enrich invitations with inviter username from profiles table
+  if (data && !error) {
+    const inviterIds = [...new Set(data.map(inv => inv.inviter).filter(Boolean))];
+    if (inviterIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', inviterIds);
+      
+      if (profiles) {
+        const usernameMap = {};
+        profiles.forEach(p => {
+          if (p.id && p.username) {
+            usernameMap[p.id] = p.username;
+          }
+        });
+        
+        // Add username to each invitation
+        return {
+          data: data.map(inv => ({
+            ...inv,
+            inviter_username: usernameMap[inv.inviter] || inv.inviter_username || null
+          })),
+          error
+        };
+      }
+    }
+  }
+  
   return { data, error };
 }
 
@@ -158,6 +206,36 @@ export async function getUserMeetings() {
 // Fetch attendees for a meeting via SECURITY DEFINER RPC which enforces authorization
 export async function getMeetingAttendees(meetingId) {
   const { data, error } = await supabase.rpc('get_meeting_attendees', { meeting: meetingId });
+  
+  // Enrich attendees with usernames from profiles table
+  if (data && !error) {
+    const userIds = data.map(a => a.user_id).filter(Boolean);
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', userIds);
+      
+      if (profiles) {
+        const usernameMap = {};
+        profiles.forEach(p => {
+          if (p.id && p.username) {
+            usernameMap[p.id] = p.username;
+          }
+        });
+        
+        // Add username to each attendee
+        return {
+          data: data.map(a => ({
+            ...a,
+            username: usernameMap[a.user_id] || null
+          })),
+          error
+        };
+      }
+    }
+  }
+  
   return { data, error };
 }
 
@@ -233,14 +311,35 @@ export async function fetchMeetingData(meetingId) {
 
   const [{ data: meeting }, { data: motions }, { data: chats }, { data: history }, attendeesRes] = await Promise.all([meetingP, motionsP, chatsP, historyP, attendeesP]);
 
-  // Build email map from attendees
+  // Build email map from attendees and fetch usernames from profiles table
   let emailMap = {};
+  let usernameMap = {};
+  
   if (attendeesRes && attendeesRes.data) {
+    const attendeeUserIds = (attendeesRes.data || []).map(a => a.user_id).filter(Boolean);
+    
+    // Build email map
     (attendeesRes.data || []).forEach(a => {
       if (a.user_id && a.email) {
         emailMap[a.user_id] = a.email;
       }
     });
+
+    // Fetch usernames from profiles table
+    if (attendeeUserIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', attendeeUserIds);
+      
+      if (profiles) {
+        profiles.forEach(p => {
+          if (p.id && p.username) {
+            usernameMap[p.id] = p.username;
+          }
+        });
+      }
+    }
   }
 
   // Collect all unique user IDs from motions, replies, and chats
@@ -263,11 +362,24 @@ export async function fetchMeetingData(meetingId) {
     });
   }
 
-  // Fetch emails for any users not in attendee list
-  const missingUserIds = Array.from(uniqueUserIds).filter(id => !emailMap[id]);
+  // Fetch emails and usernames for any users not yet in the maps
+  const missingUserIds = Array.from(uniqueUserIds).filter(id => !usernameMap[id]);
   if (missingUserIds.length > 0) {
-    // Query auth.users via RPC or via meeting_attendees (if they're attendees)
-    // For now, try to get them from meeting_attendees as a fallback
+    // Fetch from profiles table
+    const { data: additionalProfiles } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .in('id', missingUserIds);
+    
+    if (additionalProfiles) {
+      additionalProfiles.forEach(p => {
+        if (p.id && p.username) {
+          usernameMap[p.id] = p.username;
+        }
+      });
+    }
+
+    // Also try to get emails from meeting_attendees as a fallback
     const { data: additionalAttendees } = await supabase.rpc('get_meeting_attendees', { meeting: meetingId });
     if (additionalAttendees) {
       (additionalAttendees || []).forEach(a => {
@@ -285,28 +397,28 @@ export async function fetchMeetingData(meetingId) {
     votes = v || [];
   }
 
-  // Enrich motions with proposer emails
+  // Enrich motions with proposer usernames (fallback to email if no username)
   const motionsWithReplies = (motions || []).map(m => {
     const motionReplies = (replies || []).filter(rr => rr.motion_id === m.id);
-    // Enrich replies with author emails
+    // Enrich replies with author usernames
     const enrichedReplies = motionReplies.map(r => ({
       ...r,
-      author_email: emailMap[r.author] || 'Unknown User'
+      author_email: usernameMap[r.author] || emailMap[r.author] || 'Unknown User'
     }));
     return {
       ...m,
-      proposer_email: emailMap[m.proposer] || 'Unknown User',
+      proposer_email: usernameMap[m.proposer] || emailMap[m.proposer] || 'Unknown User',
       replies: enrichedReplies
     };
   });
 
-  // Enrich chats with user emails
+  // Enrich chats with user usernames (fallback to email if no username)
   const enrichedChats = (chats || []).map(c => ({
     ...c,
-    user_email: emailMap[c.user_id] || 'Unknown User'
+    user_email: usernameMap[c.user_id] || emailMap[c.user_id] || 'Unknown User'
   }));
 
-  return { meeting, motions: motionsWithReplies, votes, chats: enrichedChats, history: history || [], emailMap };
+  return { meeting, motions: motionsWithReplies, votes, chats: enrichedChats, history: history || [], emailMap, usernameMap };
 }
 
 export async function proposeMotion(meetingId, title, description = '') {
@@ -555,6 +667,7 @@ export default {
   createMeeting,
   inviteUser,
   inviteUserByEmail,
+  inviteUserByUsername,
   getMyInvitations,
   declineInvite,
   acceptInvite,
