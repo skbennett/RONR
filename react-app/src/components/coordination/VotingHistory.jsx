@@ -1,6 +1,6 @@
 import React from 'react';
 
-const VotingHistory = ({ votingHistory, historyDiscussionOpen, historyVotersOpen, currentUser, toggleHistoryDiscussion, toggleHistoryVoters, handleOverturnHistory, handleDeleteHistory, handleClearHistory }) => {
+const VotingHistory = ({ votingHistory, historyDiscussionOpen, historyVotersOpen, currentUser, toggleHistoryDiscussion, toggleHistoryVoters, handleOverturnHistory, handleDeleteHistory, handleClearHistory, emailMap = {}, isOwner = false }) => {
   return (
     <section className="voting-history">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -27,10 +27,12 @@ const VotingHistory = ({ votingHistory, historyDiscussionOpen, historyVotersOpen
                 <button className="secondary-btn" style={{ padding: '6px 8px' }} onClick={() => toggleHistoryVoters(item.id)}>
                   {historyVotersOpen[item.id] ? 'Hide Voters' : 'Show Voters'}
                 </button>
-                {(item.userVotes && ['for', 'pro'].includes(((item.userVotes[currentUser]||'') + '').toString().toLowerCase())) && (
+                {isOwner && (item.userVotes && ['for', 'pro'].includes(((item.userVotes[currentUser]||'') + '').toString().toLowerCase())) && (
                   <button className="primary-btn" onClick={() => handleOverturnHistory(item)}>Overturn</button>
                 )}
-                <button className="delete-history-btn" title="Delete this item" onClick={() => handleDeleteHistory(item.historyRowId || null, item.id)}>×</button>
+                {isOwner && (
+                  <button className="delete-history-btn" title="Delete this item" onClick={() => handleDeleteHistory(item.historyRowId || null, item.id)}>×</button>
+                )}
               </div>
             </div>
             <div className="history-votes">
@@ -46,10 +48,12 @@ const VotingHistory = ({ votingHistory, historyDiscussionOpen, historyVotersOpen
                       const raw = (reply.stance || '').toString().toLowerCase();
                       const stanceKey = (raw === 'for' || raw === 'pro') ? 'for' : (raw === 'against' || raw === 'con') ? 'against' : 'neutral';
                       const stanceLabel = stanceKey === 'for' ? 'Pro' : stanceKey === 'against' ? 'Con' : 'Neutral';
+                      // Use author_email if available, otherwise fall back to author, createdBy, or username
+                      const displayName = reply.author_email || reply.author || reply.createdBy || reply.username || 'Unknown';
                       return (
                         <div key={reply.id || `${reply.createdAt}-${Math.random()}`} className={`discussion-reply ${stanceKey}`}>
                           <div className="reply-meta">
-                            <div style={{ fontWeight: 700 }}>{reply.author || reply.createdBy || reply.username || 'Unknown'}</div>
+                            <div style={{ fontWeight: 700 }}>{displayName}</div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <div className={`reply-stance ${stanceKey}`}>{stanceLabel}</div>
                               <div style={{ fontSize: 12, color: '#666' }}>{reply.createdAt ? new Date(reply.createdAt).toLocaleString() : ''}</div>
@@ -71,14 +75,16 @@ const VotingHistory = ({ votingHistory, historyDiscussionOpen, historyVotersOpen
                 <div className="history-title" style={{ fontSize: 13, marginBottom: 8 }}>Voters</div>
                 {item.userVotes && Object.keys(item.userVotes).length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {Object.entries(item.userVotes).map(([username, vote]) => {
+                    {Object.entries(item.userVotes).map(([userId, vote]) => {
                       const raw = (vote || '').toString().toLowerCase();
                       const vKey = (raw === 'for' || raw === 'pro') ? 'for' : (raw === 'against' || raw === 'con') ? 'against' : 'neutral';
                       const vLabel = vKey === 'for' ? 'For' : vKey === 'against' ? 'Against' : 'Abstain';
+                      // Use email from emailMap if available, otherwise use the userId
+                      const displayName = emailMap[userId] || userId;
                       return (
-                        <div key={username} className={`voter-row ${vKey}`} style={{ padding: 8, background: 'var(--card)', borderRadius: 8, border: '1px solid rgba(15,23,42,0.04)' }}>
+                        <div key={userId} className={`voter-row ${vKey}`} style={{ padding: 8, background: 'var(--card)', borderRadius: 8, border: '1px solid rgba(15,23,42,0.04)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div style={{ fontWeight: 700 }}>{username}</div>
+                            <div style={{ fontWeight: 700 }}>{displayName}</div>
                             <div className={`reply-stance ${vKey}`}>{vLabel}</div>
                           </div>
                         </div>

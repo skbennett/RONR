@@ -19,6 +19,7 @@ function Coordination() {
   const [currentSession, setCurrentSession] = useState(null);
   const [activeMotions, setActiveMotions] = useState([]);
   const [votingHistory, setVotingHistory] = useState([]);
+  const [emailMap, setEmailMap] = useState({});
   const [userMeetingsList, setUserMeetingsList] = useState([]);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [motionTitle, setMotionTitle] = useState('');
@@ -63,6 +64,24 @@ function Coordination() {
   const toggleHistoryVoters = (id) => {
     setHistoryVotersOpen(prev => ({ ...prev, [id]: !prev[id] }));
   };
+
+  // Helper: check if current user is owner/chair of the meeting
+  const isOwnerOrChair = () => {
+    if (!currentSession || !user) return false;
+    const uid = user.id;
+    const isOwner = currentSession.owner === uid;
+    const isChair = currentSession.my_role === 'chair' || currentSession.role === 'chair';
+    return isOwner || isChair;
+  };
+
+  // Helper: check if current user can edit a motion (proposer or chair)
+  const canEditMotion = (motion) => {
+    if (!motion || !user) return false;
+    const uid = user.id;
+    const isProposer = motion.proposer === uid;
+    const isChair = isOwnerOrChair();
+    return isProposer || isChair;
+  };
   
   // Helper: map motions + votes (DB shape) into the frontend shape used by this page
   const mapMotionsWithVotes = (motions, votes) => {
@@ -98,7 +117,7 @@ function Coordination() {
   };
 
   // Build a UI-friendly history list by merging history rows with motions and vote aggregates.
-  const normalizeHistoryItems = (history, motions = [], votes = []) => {
+  const normalizeHistoryItems = (history, motions = [], votes = [], emailMap = {}) => {
     const motionById = {};
     (motions || []).forEach(m => { if (m && m.id) motionById[m.id] = m; });
 
@@ -174,9 +193,14 @@ function Coordination() {
       // Reply events: attach to the motion entry if possible, otherwise create a small reply entry
       if (h.event_type === 'reply_added' && ev.reply) {
         const r = ev.reply;
+        // Enrich reply with author email
+        const enrichedReply = {
+          ...r,
+          author_email: emailMap[r.author] || 'Unknown User'
+        };
         if (mid) {
           itemsByKey[key] = itemsByKey[key] || { id: mid, historyRowId: h.id, title: motionById[mid]?.title || `Motion ${mid}`, status: 'closed', votes: votesByMotion[mid] || { for: 0, against: 0, abstain: 0 }, userVotes: (votesByMotion[mid] && votesByMotion[mid].userVotes) || {}, voters: (votesByMotion[mid] && votesByMotion[mid].voters) || [], replies: [], special: motionById[mid]?.special || false, created_at: h.created_at || h.createdAt, raw: h };
-          itemsByKey[key].replies = (itemsByKey[key].replies || []).concat(r);
+          itemsByKey[key].replies = (itemsByKey[key].replies || []).concat(enrichedReply);
         } else {
           // standalone reply/history entry
           itemsByKey[key] = itemsByKey[key] || {
@@ -187,7 +211,7 @@ function Coordination() {
             votes: { for: 0, against: 0, abstain: 0 },
             userVotes: {},
             voters: [],
-            replies: [r],
+            replies: [enrichedReply],
             created_at: h.created_at || h.createdAt,
             raw: h
           };
@@ -267,7 +291,8 @@ function Coordination() {
               const res = await sb.fetchMeetingData(sess.id);
               const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
               setActiveMotions(filterActiveMotions(mapped));
-              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
+              setEmailMap(res.emailMap || {});
               setCurrentSession(res.meeting || sess);
               return;
             }
@@ -285,7 +310,8 @@ function Coordination() {
               const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
               setCurrentSession(res.meeting || sess);
               setActiveMotions(filterActiveMotions(mapped));
-              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
+              setEmailMap(res.emailMap || {});
               return;
             }
             // If the user has no meetings at all, create one automatically so coordination works
@@ -300,7 +326,8 @@ function Coordination() {
               const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
               setCurrentSession(res.meeting || sess);
               setActiveMotions(filterActiveMotions(mapped));
-              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
+              setEmailMap(res.emailMap || {});
               return;
             }
           }
@@ -326,7 +353,8 @@ function Coordination() {
           const res = await sb.fetchMeetingData(sess.id);
           const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
           setActiveMotions(filterActiveMotions(mapped));
-          setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+          setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
+          setEmailMap(res.emailMap || {});
           setChatMessages(res.chats || []);
           setCurrentSession(res.meeting || sess);
         } catch (e) {
@@ -460,7 +488,8 @@ function Coordination() {
         const res = await sb.fetchMeetingData(meetingId);
         const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
         setActiveMotions(filterActiveMotions(mapped));
-        setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+        setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
+        setEmailMap(res.emailMap || {});
         setCurrentSession(res.meeting || { id: meetingId });
       } catch (e) {
         console.error('handleSelectMeeting failed', e);
@@ -529,10 +558,19 @@ function Coordination() {
     if (!vals.title || vals.title.trim() === '') { alert('Please enter a title.'); return; }
     if (currentSession && typeof currentSession.id === 'string') {
       (async () => {
-        const { data, error } = await sb.updateMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
-        if (error) { alert('Failed to update motion.'); console.error(error); return; }
-        cancelEditForm(motionId);
-        refreshFromStorage();
+        try {
+          const { data, error } = await sb.updateMotion(motionId, { title: vals.title.trim(), description: (vals.description || '').trim(), special: !!vals.special });
+          if (error) { 
+            console.error('Update motion error:', error);
+            alert('Failed to update motion. You may not have permission to edit this motion.'); 
+            return; 
+          }
+          cancelEditForm(motionId);
+          refreshFromStorage();
+        } catch (e) {
+          console.error('Update motion exception:', e);
+          alert('Failed to update motion: ' + (e.message || 'Unknown error'));
+        }
       })();
     } else {
       alert('No active remote meeting. Sign in or ensure a meeting exists.');
@@ -711,6 +749,10 @@ function Coordination() {
   };
 
   const handleEndMotion = (motionId) => {
+    if (!isOwnerOrChair()) {
+      alert('Only the chair/owner can end motions.');
+      return;
+    }
     if (!window.confirm('End this motion now and record the outcome based on current votes?')) return;
     if (currentSession && typeof currentSession.id === 'string') {
       (async () => {
@@ -743,7 +785,8 @@ function Coordination() {
           const res = await sb.fetchMeetingData(sess.id);
           const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
           setActiveMotions(mapped);
-          setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || []));
+          setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
+          setEmailMap(res.emailMap || {});
         } catch (e) {
           console.error('create meeting failed', e);
           alert('Failed to create meeting');
@@ -869,6 +912,10 @@ function Coordination() {
   };
 
 const handleDeleteHistory = async (historyRowId, itemId) => {
+  if (!isOwnerOrChair()) {
+    alert('Only the chair/owner can delete history items.');
+    return;
+  }
   console.log('handleDeleteHistory called', { historyRowId, itemId });
 
   if (!window.confirm('Are you sure you want to delete this history item?')) return;
@@ -926,6 +973,10 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
 
   // Allow a member who voted FOR a historical motion to overturn it (bring it back to active)
   const handleOverturnHistory = (item) => {
+    if (!isOwnerOrChair()) {
+      alert('Only the chair/owner can overturn historical motions.');
+      return;
+    }
     if (!currentUser) {
       alert('You must be logged in to overturn a decision.');
       return;
@@ -1081,7 +1132,9 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
                           >
                             Resume
                           </button>
-                          <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
+                          {isOwnerOrChair() && (
+                            <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
+                          )}
                         </>
                       ) : (
                         <>
@@ -1096,14 +1149,18 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
                           >
                             Undo Vote
                           </button>
-                          {motion.status === 'voting' && (
+                          {motion.status === 'voting' && isOwnerOrChair() && (
                             <button className="secondary-btn" onClick={() => handleEndMotion(motion.id)}>End Motion</button>
                           )}
-                          <button className="secondary-btn" onClick={() => handlePostpone(motion.id)}>Postpone Decision</button>
+                          {isOwnerOrChair() && (
+                            <button className="secondary-btn" onClick={() => handlePostpone(motion.id)}>Postpone Decision</button>
+                          )}
                         </>
                       )}
-          {/* Edit button shown for all motion states (moved outside the conditional) */}
-          <button className="secondary-btn" onClick={() => showEditForm(motion.id, motion)}>Edit</button>
+          {/* Edit button shown only to motion proposer or chair */}
+          {canEditMotion(motion) && (
+            <button className="secondary-btn" onClick={() => showEditForm(motion.id, motion)}>Edit</button>
+          )}
         </div>
                   </div>
                   {editFormVisible[motion.id] && (
@@ -1246,6 +1303,8 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
         handleOverturnHistory={handleOverturnHistory}
         handleDeleteHistory={handleDeleteHistory}
         handleClearHistory={handleClearHistory}
+        emailMap={emailMap}
+        isOwner={isOwnerOrChair()}
       />
 
       {/* --- Chat Section --- */}
