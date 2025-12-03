@@ -1072,6 +1072,27 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
     }
   };
 
+    const handleDeleteChat = async (chatId, authorId) => {
+      // Only allow deletion by the message author or the meeting owner/chair
+      if (!(authorId === currentUser || isOwnerOrChair())) {
+        alert('Only the message author or the meeting owner/chair can delete this message.');
+        return;
+      }
+      if (!(currentSession && typeof currentSession.id === 'string')) {
+        alert('No active remote meeting. Sign in or ensure a meeting exists.');
+        return;
+      }
+      try {
+        const { data, error } = await sb.deleteChat(chatId);
+        if (error) { console.error('Failed to delete chat', error); alert('Failed to delete chat'); return; }
+        // Optimistically remove from UI; realtime delete event will also arrive
+        setChatMessages(prev => (prev || []).filter(c => c.id !== chatId));
+      } catch (e) {
+        console.error('Delete chat exception', e);
+        alert('Failed to delete chat');
+      }
+    };
+
   return (
     <div className="coordination-container">
       <h2>Coordination Session</h2>
@@ -1321,9 +1342,14 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
           {(chatMessages && chatMessages.length > 0) ? (
             chatMessages.map((msg) => (
               <div key={msg.id} style={{ marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #eee' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
                   <strong style={{ fontSize: '12px' }}>{msg.user_email || 'Unknown User'}</strong>
-                  <span style={{ fontSize: '11px', color: '#999' }}>{formatCreatedAt(msg.created_at)}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '11px', color: '#999' }}>{formatCreatedAt(msg.created_at)}</span>
+                    {( (msg.user_id && msg.user_id === currentUser) || isOwnerOrChair() ) && (
+                      <button className="secondary-btn" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => handleDeleteChat(msg.id, msg.user_id)}>Delete</button>
+                    )}
+                  </div>
                 </div>
                 <div style={{ fontSize: '14px', color: '#333' }}>{msg.message}</div>
               </div>

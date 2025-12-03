@@ -567,6 +567,14 @@ export async function sendChat(meetingId, message, meta = {}) {
   return { data, error };
 }
 
+export async function deleteChat(chatId) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase.from('chats').delete().match({ id: chatId }).select().single();
+  return { data, error };
+}
+
 // Subscribe to meeting-specific realtime events. handlers: { onMeeting, onMotions, onHistory, onChats, onAttendees }
 export function subscribeToMeeting(meetingId, handlers = {}) {
   const channel = supabase.channel(`meeting:${meetingId}`);
@@ -684,6 +692,7 @@ export default {
   resumeMotion,
   endMotion,
   sendChat,
+  deleteChat,
   subscribeToMeeting,
   downloadMinutes,
   leaveMeeting,
