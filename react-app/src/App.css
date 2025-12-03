@@ -65,23 +65,27 @@ body {
   text-decoration: underline;
 }
 /* Updated sign-in and logout button styles */
-.sign-in-btn,
-.logout-btn {
-  background-color: #7aae8c;
-  color: white;
-  border: none;
-  padding: 8px 20px;
-  border-radius: 4px;
-  font-weight: bold;
-  cursor: pointer;
-  font-size: 1em;
-  transition: all 0.3s ease;
+.sign-in-btn, .logout-btn, .username-btn {
+    background-color: #7AAE8C;
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1em;
+    transition: all 0.3s ease;
 }
 
-.sign-in-btn:hover,
-.logout-btn:hover {
-  background-color: #5a8c6a;
-  transform: translateY(-1px);
+.sign-in-btn:hover, .logout-btn:hover, .username-btn:hover {
+    background-color: #5a8c6a;
+    transform: translateY(-1px);
+}
+
+.user-info {
+    display: flex;
+    gap: 10px;
+    align-items: center;
 }
 
 /* By default (on desktop), hide mobile-only elements */
@@ -148,22 +152,30 @@ body {
 
 /* Updated mobile button styles */
 .mobile-menu .sign-in-btn-mobile,
-.mobile-menu .logout-btn-mobile {
-  background-color: #7aae8c;
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: center;
-  font-size: 1.1rem;
-  transition: all 0.3s ease;
+.mobile-menu .logout-btn-mobile,
+.mobile-menu .username-btn-mobile {
+    background-color: #7AAE8C;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
 }
 
 .mobile-menu .sign-in-btn-mobile:hover,
-.mobile-menu .logout-btn-mobile:hover {
-  background-color: #5a8c6a;
-  transform: translateY(-1px);
+.mobile-menu .logout-btn-mobile:hover,
+.mobile-menu .username-btn-mobile:hover {
+    background-color: #5a8c6a;
+    transform: translateY(-1px);
+}
+
+.mobile-user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .add-meeting-form {

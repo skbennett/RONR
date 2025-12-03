@@ -1,16 +1,47 @@
 // src/components/Navbar.jsx
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import UsernamePopup from './UsernamePopup';
+import supabase from '../supabaseClient';
 
 // Import your logo image
 import gavelLogo from '../Images/Court Gavel.png';
 
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isUsernamePopupOpen, setIsUsernamePopupOpen] = useState(false);
+  const [displayName, setDisplayName] = useState('Member');
   const navigate = useNavigate()
   const { isAuthenticated, user, signOut } = useAuth()
+
+  useEffect(() => {
+    const fetchUsername = async () => {
+      if (user?.id) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .single();
+        
+        if (!error && data?.username) {
+          setDisplayName(data.username);
+        } else {
+          // Fallback to user metadata or email
+          setDisplayName(
+            user.user_metadata?.username || 
+            user.user_metadata?.full_name || 
+            (user.email ? user.email.split('@')[0] : 'Member')
+          );
+        }
+      } else {
+        setDisplayName('Member');
+      }
+    };
+
+    fetchUsername();
+  }, [user, isUsernamePopupOpen]); // Re-fetch when popup closes (via isUsernamePopupOpen change)
 
   const handleLinkClick = (path) => {
     setIsMenuOpen(false);
@@ -24,8 +55,6 @@ function Navbar() {
     setIsMenuOpen(false)
     navigate('/')
   }
-
-  const displayName = (user && (user.user_metadata?.username || user.user_metadata?.full_name || (user.email ? user.email.split('@')[0] : null))) || 'Member'
 
   return (
     <>
@@ -51,6 +80,9 @@ function Navbar() {
         {/* --- Desktop Auth Button --- */}
         {isAuthenticated ? (
           <div className="user-info desktop-only">
+            <button className="username-btn" onClick={() => setIsUsernamePopupOpen(true)}>
+              Change Name
+            </button>
             <button className="logout-btn" onClick={handleLogout}>
               {`Sign Out (${displayName})`}
             </button>
@@ -79,6 +111,9 @@ function Navbar() {
         </a>
         {isAuthenticated ? (
           <div className="mobile-user-info">
+            <button className="username-btn-mobile" onClick={() => { setIsUsernamePopupOpen(true); setIsMenuOpen(false); }}>
+              Change Name
+            </button>
             <button className="logout-btn-mobile" onClick={handleLogout}>
               {`Sign Out (${displayName})`}
             </button>
@@ -89,6 +124,14 @@ function Navbar() {
           </button>
         )}
       </div>
+
+      {/* Username Change Popup */}
+      <UsernamePopup
+        isOpen={isUsernamePopupOpen}
+        onClose={() => setIsUsernamePopupOpen(false)}
+        currentUsername={displayName}
+        userId={user?.id}
+      />
     </>
   );
 }
