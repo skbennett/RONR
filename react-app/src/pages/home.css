@@ -30,14 +30,124 @@
   min-height: 50vh;
 }
 
+/* About page hero overrides: show a large image on top and center text below it */
+.about-hero {
+  display: flex; /* stack image above text cleanly */
+  flex-direction: column;
+  gap: 18px;
+  text-align: center;
+  align-items: center;
+  padding-bottom: 6px;
+}
+
+.about-hero .hero-image {
+  max-height: 520px; /* prominent top image */
+  transform: none; /* remove left nudge for centered banner */
+  margin: 0 auto;
+  width: 100%;
+  display: block;
+}
+
+.about-hero .hero-text {
+  padding: 6px 12px 18px 12px;
+  z-index: auto; /* ensure text doesn't float above the image */
+}
+
+/* make the separator a normal block under the hero (not absolutely positioned) */
+.about-hero::after {
+  content: "";
+  display: block;
+  width: 160px;
+  height: 4px;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 2px;
+  margin: 18px auto 0 auto;
+}
+
+/* overlay slogan that sits on top of the hero image on wide screens */
+.overlay-slogan {
+  display: none; /* hidden by default (mobile shows inline tagline) */
+}
+
+@media (min-width: 900px) {
+  .overlay-slogan {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: 28%;
+    transform: translateX(-50%);
+    z-index: 3;
+    pointer-events: none;
+    max-width: 90%;
+    text-align: center;
+  }
+
+  .overlay-slogan .overlay-text {
+    color: #ffffff;
+    /* responsive, larger headline over the hero image */
+    font-size: clamp(24px, 3.5vw, 44px);
+    font-weight: 700;
+    /* stronger shadow for higher contrast on busy images */
+    text-shadow: 0 10px 30px rgba(2, 6, 23, 0.7), 0 2px 6px rgba(2, 6, 23, 0.45);
+    display: inline-block;
+    padding: 8px 16px;
+  }
+
+  /* hide the inline tagline when overlay is active */
+  .about-hero .hero-text .tagline {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  /* ensure inline tagline is visible on small screens */
+  .about-hero .hero-text .tagline {
+    display: block;
+  }
+}
+
+/* Ensure About hero image is fully above text and nothing overlaps */
+.about-hero {
+  min-height: 0; /* override hero min-height to avoid overlap */
+}
+
+.about-hero .hero-text {
+  position: static; /* remove any relative positioning that could cause stacking */
+  width: 100%;
+  margin-top: 18px; /* reduced gap so title sits closer to image */
+}
+
+.about-hero .cta-row {
+  justify-content: center;
+  margin-top: 6px;
+}
+
+@media (min-width: 1200px) {
+  /* keep about page stacked on narrow screens, but allow side-by-side on very wide if desired */
+  .about-hero.wide-split {
+    display: grid;
+    grid-template-columns: 1fr 640px;
+    align-items: center;
+    gap: 28px;
+  }
+}
+
+@media (min-width: 900px) {
+  /* slightly more breathing room on wide screens, but reduced from before */
+  .about-hero .hero-text {
+    margin-top: 30px;
+  }
+}
+
 /* horizontal separator anchored to the hero, sits between hero and features */
 .hero::after {
   content: "";
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: -22px; /* sits in the gap between hero and features */
-  width: 1600px;
+  bottom: -16px; /* slightly closer to the hero to reduce visual gap */
+  width: 100%;
+  max-width: 1600px; /* don't exceed container width */
   height: 1px;
   /* use a faint gray so the separator is subtle */
   background: rgba(15, 23, 42, 0.06);
@@ -53,7 +163,7 @@
 }
 
 .hero-text h1 {
-  margin: 0 0 12px 0;
+  margin: 0 0 6px 0; /* reduce gap under title */
   font-size: 44px;
   line-height: 1.04;
   letter-spacing: -0.5px;
@@ -65,20 +175,20 @@
   font-size: 56px;
   font-weight: 700;
   line-height: 1.02;
-  background: var(--bg); /* make flush with page background */
-  padding-right: 6px;
-  border-radius: 6px;
+  background: transparent; /* remove boxed background so text sits cleanly */
+  padding-right: 0;
+  border-radius: 0;
 }
 
 .hero-text h1 .tagline {
   display: block;
   font-size: 18px;
-  margin-top: 6px;
+  margin-top: 2px;
   color: var(--muted);
   font-weight: 600;
-  background: var(--bg);
-  padding-right: 6px;
-  border-radius: 6px;
+  background: transparent;
+  padding-right: 0;
+  border-radius: 0;
 }
 
 /* small centered subtle bar under the tagline */
@@ -89,7 +199,7 @@
   height: 2px;
   /* faint gray to match the hero separator */
   background: rgba(15, 23, 42, 0.06);
-  margin: 10px auto 0 auto;
+  margin: 4px auto 0 auto;
   border-radius: 2px;
 }
 
@@ -141,7 +251,7 @@
   box-shadow: 0 18px 44px rgba(12, 18, 34, 0.12);
   object-fit: cover;
   display: block;
-  transform: translateX(-26px); /* nudge image left a bit more */
+  transform: none; /* remove horizontal nudge to avoid horizontal overflow */
 }
 
 .features {
@@ -152,6 +262,40 @@
   gap: 20px;
   align-items: start;
   padding: 0;
+}
+
+/* About page: center the features/cards and their contents */
+.about-grid-section .features {
+  /* responsive centered grid for about cards */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 28px;
+  justify-content: center; /* center the grid within the section */
+  justify-items: center; /* center items inside their grid cells */
+  align-items: stretch;
+  grid-auto-rows: 1fr; /* make cards equal height if needed */
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.about-grid-section .features > .card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 420px; /* constrain card width for nicer measure */
+  margin: 0; /* grid controls centering */
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* center contents inside card */
+  text-align: center;
+}
+
+.about-grid-section .card .badge {
+  margin: 0 auto 10px auto; /* center badge above title */
+}
+
+.about-grid-section .card h3,
+.about-grid-section .card p {
+  text-align: center;
 }
 
 /* At larger screens force 4 equal columns so the fourth card sits inline */

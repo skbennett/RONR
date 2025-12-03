@@ -1,49 +1,87 @@
 // src/pages/About.jsx
 import React from 'react';
-import '../App.css'; 
+import '../App.css';
+import './home.css';
 import meetingRoomImage from '../Images/meeting_room.jpg';
 
 function About() {
   return (
-    <div className="main-content about-page">
-      {/* 1. Hero Section */}
-      <div className="about-hero">
-        <img src={meetingRoomImage} alt="Meeting Room" className="about-hero-image" />
-        <div className="about-hero-text">
-          <h1 style={{ color: '#FFFFFFFF' }}>Better Meetings, Better Decisions.</h1>
-        </div>
-      </div>
+    <main className="main-content about-page">
+      {/* Hero (reuse home hero styles) */}
+      <section className="hero about-hero">
+        <img src={meetingRoomImage} alt="Meeting Room" className="hero-image about-hero-image" />
 
-      {/* 2. Narrative Section (The text you centered earlier) */}
-      <section className="about-narrative">
-        <p className="mission-statement">
-          Following Robert's Rules of Order (RONR), our web app aims to streamline meetings by providing 
-          meeting scheduling, sctructured motions, real time chatting, and voting functionalities to ensure efficient and RONR compliant decision-making.
-        </p>
-        <p className="names-list">
-          Created By - Jason, Keegan, and Shane
-        </p>
+        {/* overlay slogan shown on wide screens */}
+        <div className="overlay-slogan" aria-hidden="true">
+          <span className="overlay-text">Better Meetings, Better Decisions.</span>
+        </div>
+
+        <div className="hero-text about-hero-text">
+          <h1>
+            <span className="brand">CourtOrder</span>
+            <span className="tagline">Better Meetings, Better Decisions.</span>
+          </h1>
+          {/* mission statement moved below the hero to avoid duplication */}
+
+          {/* CTAs moved below the narrative to avoid overlapping the hero image */}
+        </div>
+
       </section>
 
-      {/* 3. Values / Details Grid (Clean 3-column layout) */}
-      <section className="about-grid-section">
-        <div className="grid-container">
-          <div className="grid-item">
+      {/* Narrative / Values */}
+      <section className="about-narrative" style={{ paddingTop: '18px' }}>
+        <p className="mission-statement" style={{ textAlign: 'center', maxWidth: '62ch', margin: '0 auto' }}>
+          Following Robert's Rules of Order (RONR), CourtOrder streamlines meetings with structured
+          agendas, clear motions, and built-in voting, making decision processes simple, transparent,
+          and efficient so every meeting finishes with a clear result.
+        </p>
+        <p className="names-list" style={{ textAlign: 'center', color: 'var(--muted)', marginTop: '10px' }}>
+          Created by Jason, Keegan, and Shane
+        </p>
+
+        {/* Call-to-action buttons placed below the created-by line */}
+        <div style={{ textAlign: 'center', marginTop: '8px' }}>
+          <div className="cta-row">
+            <button className="btn" onClick={() => (window.location.href = '/')}>Home</button>
+            <button className="btn secondary" onClick={() => (window.location.href = '/meetings')}>Get Started</button>
+          </div>
+        </div>
+      </section>
+
+      {/* Values grid — use card styles from home.css for visual consistency */}
+      <section className="about-grid-section" style={{ marginTop: '8px' }}>
+        <div className="features">
+          <article className="card">
+            <div className="badge">Mission</div>
             <h3>Our Mission</h3>
-            <p>Empowering teams to make decisions transparently and efficiently, ensuring every voice is heard and every meeting is productive.</p>
-          </div>
-          <div className="grid-item">
+            <p>
+              We help groups make clear, fair decisions with simple, Robert's Rules–inspired tools
+              for agendas, motions, and recorded votes.
+            </p>
+          </article>
+
+          <article className="card">
+            <div className="badge">Story</div>
             <h3>Our Story</h3>
-            <p>CourtOrder was created as a project for CSCI 432 (Web Development) at William and Mary in Fall 2025.</p>
-          </div>
-          <div className="grid-item">
-            <h3>Check It Out</h3>
-            <p>Github: <a href="https://github.com/skbennett/RONR">https://github.com/skbennett/RONR</a></p>
-            <p>YouTube: <a href="https://youtu.be/dQw4w9WgXcQ?si=EWBD2UHJxbc-RQw7">https://youtube.com/courtorder</a></p>
-          </div>
+            <p>
+              CourtOrder began as a CSCI 432 project at William & Mary to modernize parliamentary
+              procedure through user-centered design.
+            </p>
+          </article>
+
+          <article className="card">
+            <div className="badge">Explore</div>
+            <h3>Check Us Out</h3>
+            <p>
+              Github: <a href="https://github.com/skbennett/RONR">github.com/skbennett/RONR</a>
+            </p>
+            <p>
+              Youtube: <a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ">youtube.com/CourtOrder</a>
+            </p>
+          </article>
         </div>
       </section>
-    </div>
+    </main>
   );
 }
 
