@@ -22,8 +22,8 @@ function Home() {
           </p>
 
           <div className="cta-row">
-            <button className="btn" onClick={() => window.location.href = '/login'}>Get started</button>
-            <button className="btn secondary" onClick={() => window.location.href = '/about'}>Learn more</button>
+            <button className="btn" onClick={() => window.location.href = '/meetings'}>Get Started</button>
+            <button className="btn secondary" onClick={() => window.location.href = '/about'}>Learn More</button>
           </div>
         </div>
 
@@ -54,7 +54,7 @@ function Home() {
         <article className="card">
           <div className="badge">Voting</div>
           <h3>Voting &amp; Tally</h3>
-          <p>Run efficient votes with instant tallies, anonymous ballots, and exportable results for transparency.</p>
+          <p>Run efficient votes with instant tallies, ballots, and exportable results for transparency.</p>
         </article>
       </section>
 
