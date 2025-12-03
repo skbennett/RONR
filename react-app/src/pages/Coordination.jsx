@@ -330,6 +330,7 @@ function Coordination() {
               setEmailMap(res.emailMap || {});
               return;
             }
+            // If the user has no meetings, leave the UI empty - they can create or join a meeting from the Meetings page
           }
         }
       } catch (e) {
