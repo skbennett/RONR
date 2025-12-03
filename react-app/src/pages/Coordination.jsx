@@ -293,7 +293,7 @@ function Coordination() {
               setActiveMotions(filterActiveMotions(mapped));
               setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
               setEmailMap(res.emailMap || {});
-              setCurrentSession(res.meeting || sess);
+              setCurrentSession(res.meeting ? { ...res.meeting, name: res.meeting.title || sess.name, startTime: res.meeting.coordination?.date && res.meeting.coordination?.time ? formatDateTime(res.meeting.coordination.date, res.meeting.coordination.time) : (res.meeting.created_at ? formatCreatedAt(res.meeting.created_at) : sess.startTime) } : sess);
               return;
             }
             // If user has meetings but none owned, pick the first they participate in
@@ -308,7 +308,7 @@ function Coordination() {
               };
               const res = await sb.fetchMeetingData(sess.id);
               const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
-              setCurrentSession(res.meeting || sess);
+              setCurrentSession(res.meeting ? { ...res.meeting, name: res.meeting.title || sess.name, startTime: res.meeting.coordination?.date && res.meeting.coordination?.time ? formatDateTime(res.meeting.coordination.date, res.meeting.coordination.time) : (res.meeting.created_at ? formatCreatedAt(res.meeting.created_at) : sess.startTime) } : sess);
               setActiveMotions(filterActiveMotions(mapped));
               setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
               setEmailMap(res.emailMap || {});
@@ -324,7 +324,7 @@ function Coordination() {
               };
               const res = await sb.fetchMeetingData(sess.id);
               const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
-              setCurrentSession(res.meeting || sess);
+              setCurrentSession(res.meeting ? { ...res.meeting, name: res.meeting.title || sess.name, startTime: res.meeting.coordination?.date && res.meeting.coordination?.time ? formatDateTime(res.meeting.coordination.date, res.meeting.coordination.time) : (res.meeting.created_at ? formatCreatedAt(res.meeting.created_at) : sess.startTime) } : sess);
               setActiveMotions(filterActiveMotions(mapped));
               setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
               setEmailMap(res.emailMap || {});
@@ -356,7 +356,7 @@ function Coordination() {
           setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
           setEmailMap(res.emailMap || {});
           setChatMessages(res.chats || []);
-          setCurrentSession(res.meeting || sess);
+              setCurrentSession(res.meeting ? { ...res.meeting, name: res.meeting.title || sess.name, startTime: res.meeting.coordination?.date && res.meeting.coordination?.time ? formatDateTime(res.meeting.coordination.date, res.meeting.coordination.time) : (res.meeting.created_at ? formatCreatedAt(res.meeting.created_at) : sess.startTime) } : sess);
         } catch (e) {
           console.error('refreshFromStorage failed', e);
         }
@@ -490,7 +490,7 @@ function Coordination() {
         setActiveMotions(filterActiveMotions(mapped));
         setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
         setEmailMap(res.emailMap || {});
-        setCurrentSession(res.meeting || { id: meetingId });
+        setCurrentSession(res.meeting ? { ...res.meeting, name: res.meeting.title || `Meeting ${meetingId}`, startTime: res.meeting.coordination?.date && res.meeting.coordination?.time ? formatDateTime(res.meeting.coordination.date, res.meeting.coordination.time) : (res.meeting.created_at ? formatCreatedAt(res.meeting.created_at) : new Date().toISOString()) } : { id: meetingId, name: `Meeting ${meetingId}`, startTime: new Date().toISOString() });
       } catch (e) {
         console.error('handleSelectMeeting failed', e);
         alert('Failed to select meeting');
