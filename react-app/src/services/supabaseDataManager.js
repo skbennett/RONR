@@ -562,9 +562,16 @@ export async function sendChat(meetingId, message, meta = {}) {
   }).select().single();
 
   if (!error) {
-    await supabase.from('meeting_history').insert({ meeting_id: meetingId, event_type: 'chat', event: { chat: data } });
   }
 
+  return { data, error };
+}
+
+export async function deleteChat(chatId) {
+  const user = await getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase.from('chats').delete().match({ id: chatId }).select().single();
   return { data, error };
 }
 
@@ -685,6 +692,7 @@ export default {
   resumeMotion,
   endMotion,
   sendChat,
+  deleteChat,
   subscribeToMeeting,
   downloadMinutes,
   leaveMeeting,
