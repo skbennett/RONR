@@ -57,7 +57,7 @@ body {
     text-decoration: underline;
 }
 /* Updated sign-in and logout button styles */
-.sign-in-btn, .logout-btn {
+.sign-in-btn, .logout-btn, .username-btn {
     background-color: #7AAE8C;
     color: white;
     border: none;
@@ -69,9 +69,15 @@ body {
     transition: all 0.3s ease;
 }
 
-.sign-in-btn:hover, .logout-btn:hover {
+.sign-in-btn:hover, .logout-btn:hover, .username-btn:hover {
     background-color: #5a8c6a;
     transform: translateY(-1px);
+}
+
+.user-info {
+    display: flex;
+    gap: 10px;
+    align-items: center;
 }
 
 /* By default (on desktop), hide mobile-only elements */
@@ -137,7 +143,8 @@ body {
 
 /* Updated mobile button styles */
 .mobile-menu .sign-in-btn-mobile,
-.mobile-menu .logout-btn-mobile {
+.mobile-menu .logout-btn-mobile,
+.mobile-menu .username-btn-mobile {
     background-color: #7AAE8C;
     color: white;
     border: none;
@@ -150,9 +157,16 @@ body {
 }
 
 .mobile-menu .sign-in-btn-mobile:hover,
-.mobile-menu .logout-btn-mobile:hover {
+.mobile-menu .logout-btn-mobile:hover,
+.mobile-menu .username-btn-mobile:hover {
     background-color: #5a8c6a;
     transform: translateY(-1px);
+}
+
+.mobile-user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .add-meeting-form {
