@@ -39,6 +39,7 @@ function About() {
           <div className="grid-item">
             <h3>Check It Out</h3>
             <p>Github: <a href="https://github.com/skbennett/RONR">https://github.com/skbennett/RONR</a></p>
+            <p>YouTube: <a href="https://youtu.be/dQw4w9WgXcQ?si=EWBD2UHJxbc-RQw7">https://youtube.com/courtorder</a></p>
           </div>
         </div>
       </section>
