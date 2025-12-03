@@ -356,6 +356,19 @@ function Coordination() {
     init();
   }, [user]);
 
+  // Ensure we refresh meeting data after auth state restores on page reload.
+  // Sometimes the page fetch occurs before Supabase has rehydrated the session,
+  // causing RLS-protected SELECTs (chats, votes, etc.) to return empty results.
+  useEffect(() => {
+    if (user && currentSession && typeof currentSession.id === 'string') {
+      // small delay to allow any auth listeners to settle
+      const t = setTimeout(() => {
+        try { refreshFromStorage(); } catch (e) { console.error('refresh after auth restore failed', e); }
+      }, 50);
+      return () => clearTimeout(t);
+    }
+  }, [user?.id, currentSession?.id]);
+
   
 
   // --- Sub-motion helpers & utilities ---
