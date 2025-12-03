@@ -314,22 +314,7 @@ function Coordination() {
               setEmailMap(res.emailMap || {});
               return;
             }
-            // If the user has no meetings at all, create one automatically so coordination works
-            const { data: created, error: createErr } = await sb.createMeeting({ title: `Meeting ${user.id.substring(0,8)}`, description: '' });
-            if (!createErr && created && created.id) {
-              const sess = { 
-                id: created.id, 
-                name: created.title || `Meeting ${created.id}`, 
-                startTime: formatCreatedAt(created.created_at)
-              };
-              const res = await sb.fetchMeetingData(sess.id);
-              const mapped = mapMotionsWithVotes(res.motions || [], res.votes || []);
-              setCurrentSession(res.meeting || sess);
-              setActiveMotions(filterActiveMotions(mapped));
-              setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
-              setEmailMap(res.emailMap || {});
-              return;
-            }
+            // If the user has no meetings, leave the UI empty - they can create or join a meeting from the Meetings page
           }
         }
       } catch (e) {
