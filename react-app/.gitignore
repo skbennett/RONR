@@ -28,3 +28,7 @@ dist-ssr
 
 # Local environment (do not commit local env files)
 .env.local
+
+node_modules/
+package.json
+users.sqbpro

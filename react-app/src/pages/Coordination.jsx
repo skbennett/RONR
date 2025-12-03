@@ -1313,21 +1313,6 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
           <p className="no-motions">No active motions</p>
         )}
       </section>
-      
-      {/* --- Voting History --- */}
-      <VotingHistory
-        votingHistory={votingHistory}
-        historyDiscussionOpen={historyDiscussionOpen}
-        historyVotersOpen={historyVotersOpen}
-        currentUser={currentUser}
-        toggleHistoryDiscussion={toggleHistoryDiscussion}
-        toggleHistoryVoters={toggleHistoryVoters}
-        handleOverturnHistory={handleOverturnHistory}
-        handleDeleteHistory={handleDeleteHistory}
-        handleClearHistory={handleClearHistory}
-        emailMap={emailMap}
-        isOwner={isOwnerOrChair()}
-      />
 
       {/* --- Chat Section --- */}
       <section className="chat-section" style={{ marginTop: '30px', borderTop: '1px solid #ddd', paddingTop: '20px' }}>
@@ -1361,6 +1346,22 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
           <button type="submit" className="primary-btn" disabled={!currentSession || !chatInput.trim()}>Send</button>
         </form>
       </section>
+
+      {/* --- Voting History --- */}
+      <VotingHistory
+        votingHistory={votingHistory}
+        historyDiscussionOpen={historyDiscussionOpen}
+        historyVotersOpen={historyVotersOpen}
+        currentUser={currentUser}
+        toggleHistoryDiscussion={toggleHistoryDiscussion}
+        toggleHistoryVoters={toggleHistoryVoters}
+        handleOverturnHistory={handleOverturnHistory}
+        handleDeleteHistory={handleDeleteHistory}
+        handleClearHistory={handleClearHistory}
+        emailMap={emailMap}
+        isOwner={isOwnerOrChair()}
+      />
+
     </div>
   );
 }
