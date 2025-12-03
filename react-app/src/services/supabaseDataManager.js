@@ -562,7 +562,6 @@ export async function sendChat(meetingId, message, meta = {}) {
   }).select().single();
 
   if (!error) {
-    await supabase.from('meeting_history').insert({ meeting_id: meetingId, event_type: 'chat', event: { chat: data } });
   }
 
   return { data, error };

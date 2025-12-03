@@ -20,6 +20,7 @@ function Coordination() {
   const [activeMotions, setActiveMotions] = useState([]);
   const [votingHistory, setVotingHistory] = useState([]);
   const [emailMap, setEmailMap] = useState({});
+  const [usernameMap, setUsernameMap] = useState({});
   const [userMeetingsList, setUserMeetingsList] = useState([]);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [motionTitle, setMotionTitle] = useState('');
@@ -121,6 +122,14 @@ function Coordination() {
     const motionById = {};
     (motions || []).forEach(m => { if (m && m.id) motionById[m.id] = m; });
 
+    // Collect reply IDs that exist on motions (from motion_replies table)
+    // so we can avoid duplicating them when the same reply is also logged
+    // as a `reply_added` event in `meeting_history`.
+    const existingReplyIds = new Set();
+    (motions || []).forEach(m => {
+      (m.replies || []).forEach(r => { if (r && r.id) existingReplyIds.add(r.id); });
+    });
+
     const votesByMotion = {};
     (votes || []).forEach(v => {
       const mid = v.motion_id || v.motionId || v.motion;
@@ -193,6 +202,9 @@ function Coordination() {
       // Reply events: attach to the motion entry if possible, otherwise create a small reply entry
       if (h.event_type === 'reply_added' && ev.reply) {
         const r = ev.reply;
+        // If this reply already exists in `motions.replies`, skip the
+        // history entry to avoid showing it twice in the UI.
+        if (r && r.id && existingReplyIds.has(r.id)) return;
         // Enrich reply with author email
         const enrichedReply = {
           ...r,
@@ -293,6 +305,7 @@ function Coordination() {
               setActiveMotions(filterActiveMotions(mapped));
               setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
               setEmailMap(res.emailMap || {});
+              setUsernameMap(res.usernameMap || {});
               setCurrentSession(res.meeting ? { ...res.meeting, name: res.meeting.title || sess.name, startTime: res.meeting.coordination?.date && res.meeting.coordination?.time ? formatDateTime(res.meeting.coordination.date, res.meeting.coordination.time) : (res.meeting.created_at ? formatCreatedAt(res.meeting.created_at) : sess.startTime) } : sess);
               return;
             }
@@ -312,6 +325,7 @@ function Coordination() {
               setActiveMotions(filterActiveMotions(mapped));
               setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
               setEmailMap(res.emailMap || {});
+              setUsernameMap(res.usernameMap || {});
               return;
             }
             // If the user has no meetings at all, create one automatically so coordination works
@@ -328,6 +342,7 @@ function Coordination() {
               setActiveMotions(filterActiveMotions(mapped));
               setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
               setEmailMap(res.emailMap || {});
+              setUsernameMap(res.usernameMap || {});
               return;
             }
             // If the user has no meetings, leave the UI empty - they can create or join a meeting from the Meetings page
@@ -356,6 +371,7 @@ function Coordination() {
           setActiveMotions(filterActiveMotions(mapped));
           setVotingHistory(normalizeHistoryItems(res.history || [], res.motions || [], res.votes || [], res.emailMap || {}));
           setEmailMap(res.emailMap || {});
+          setUsernameMap(res.usernameMap || {});
           setChatMessages(res.chats || []);
               setCurrentSession(res.meeting ? { ...res.meeting, name: res.meeting.title || sess.name, startTime: res.meeting.coordination?.date && res.meeting.coordination?.time ? formatDateTime(res.meeting.coordination.date, res.meeting.coordination.time) : (res.meeting.created_at ? formatCreatedAt(res.meeting.created_at) : sess.startTime) } : sess);
         } catch (e) {
@@ -401,6 +417,10 @@ function Coordination() {
       if (!rec || !rec.id) return refreshFromStorage();
       
       if (op === 'INSERT') {
+        // Enrich chat record with known username/email before adding
+        try {
+          rec.user_email = (usernameMap && usernameMap[rec.user_id]) || (emailMap && emailMap[rec.user_id]) || rec.user_email || 'Unknown User';
+        } catch (e) { rec.user_email = rec.user_email || 'Unknown User'; }
         // Add new chat message to the list
         setChatMessages(prev => [...(prev || []), rec]);
         // Auto-scroll to bottom on new message
@@ -410,6 +430,7 @@ function Coordination() {
         setChatMessages(prev => (prev || []).filter(c => c.id !== rec.id));
       } else if (op === 'UPDATE') {
         // Update modified chat (e.g., edited message)
+        try { rec.user_email = (usernameMap && usernameMap[rec.user_id]) || (emailMap && emailMap[rec.user_id]) || rec.user_email || 'Unknown User'; } catch (e) { rec.user_email = rec.user_email || 'Unknown User'; }
         setChatMessages(prev => (prev || []).map(c => c.id === rec.id ? rec : c));
       }
     },
