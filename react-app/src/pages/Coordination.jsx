@@ -57,6 +57,8 @@ function Coordination() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
 
   const toggleHistoryDiscussion = (id) => {
     setHistoryDiscussionOpen(prev => ({ ...prev, [id]: !prev[id] }));
@@ -441,9 +443,11 @@ function Coordination() {
           rec.user_email = (usernameMap && usernameMap[rec.user_id]) || (emailMap && emailMap[rec.user_id]) || rec.user_email || 'Unknown User';
         } catch (e) { rec.user_email = rec.user_email || 'Unknown User'; }
         // Add new chat message to the list
+        const container = chatContainerRef.current;
+
         setChatMessages(prev => [...(prev || []), rec]);
-        // Auto-scroll to bottom on new message
-        setTimeout(() => { if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, 0);
+        // Only auto-scroll if user is already near the bottom; otherwise show indicator
+        
       } else if (op === 'DELETE') {
         // Remove deleted chat
         setChatMessages(prev => (prev || []).filter(c => c.id !== rec.id));
@@ -1089,13 +1093,21 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
         return;
       }
       setChatInput('');
-      // Auto-scroll to bottom after sending
-      setTimeout(() => { if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, 0);
+      // Auto-scroll to bottom after sending (sender expects immediate view)
+      setHasNewMessages(false);
     } catch (e) {
       console.error('Error sending chat', e);
       alert('Failed to send message');
     }
   };
+
+  const handleChatScroll = () => {
+    const c = chatContainerRef.current;
+    if (!c) return;
+    // if user scrolled close to bottom, clear the new-message indicator
+    if (c.scrollHeight - c.scrollTop - c.clientHeight < 100) setHasNewMessages(false);
+  };
+
 
     const handleDeleteChat = async (chatId, authorId) => {
       // Only allow deletion by the message author or the meeting owner/chair
@@ -1365,7 +1377,7 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
       {/* --- Chat Section --- */}
       <section className="chat-section" style={{ marginTop: '30px', borderTop: '1px solid #ddd', paddingTop: '20px' }}>
         <h3>Meeting Chat</h3>
-        <div className="chat-messages" style={{ border: '1px solid #ddd', borderRadius: '8px', height: '300px', overflowY: 'auto', padding: '12px', marginBottom: '12px', backgroundColor: '#f9f9f9' }}>
+        <div ref={chatContainerRef} onScroll={handleChatScroll} className="chat-messages" style={{ border: '1px solid #ddd', borderRadius: '8px', height: '300px', overflowY: 'auto', padding: '12px', marginBottom: '12px', backgroundColor: '#f9f9f9' }}>
           {(chatMessages && chatMessages.length > 0) ? (
             chatMessages.map((msg) => (
               <div key={msg.id} style={{ marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid #eee' }}>
@@ -1386,6 +1398,13 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
           )}
           <div ref={chatEndRef} />
         </div>
+
+        {hasNewMessages && (
+          <div style={{ textAlign: 'center', marginBottom: 8 }}>
+            <button className="primary-btn">New messages</button>
+          </div>
+        )}
+
         <form onSubmit={handleSendChat} style={{ display: 'flex', gap: '8px' }}>
           <input
             type="text"
