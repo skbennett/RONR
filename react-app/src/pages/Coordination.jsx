@@ -75,6 +75,12 @@ function Coordination() {
     return isOwner || isChair;
   };
 
+  // Helper: check if current user is the meeting owner (owner-only actions)
+  const isOwnerOnly = () => {
+    if (!currentSession || !user) return false;
+    return currentSession.owner === user.id;
+  };
+
   // Helper: check if current user can edit a motion (proposer or chair)
   const canEditMotion = (motion) => {
     if (!motion || !user) return false;
@@ -847,30 +853,36 @@ function Coordination() {
   };
 
   const handleEndSession = () => {
-    if (window.confirm('Are you sure you want to end the current session? Active motions will be archived.')) {
-      // End each active motion using the canonical end function so outcomes
-      // are computed consistently (2/3 rule) and archived into history.
-      if (currentSession && typeof currentSession.id === 'string') {
-        // For remote meetings, call endMotion RPC for each open/postponed motion
-        (async () => {
-          try {
-            const data = await sb.fetchMeetingData(currentSession.id);
-            const ids = (data.motions || []).map(m => m.id);
-            for (const id of ids) {
-              try { await sb.endMotion(id); } catch (e) { console.error('Error ending motion', id, e); }
-            }
-          } catch (e) { console.error('Failed to fetch meeting motions to end', e); }
-          refreshFromStorage();
-        })();
-      }
-      // clear session pointer
-      setCurrentSession(null);
-      // close and reset the 'Propose a New Motion' form so UI is clean after ending session
-      setIsFormVisible(false);
-      setMotionTitle('');
-      setMotionDescription('');
-      setMotionSpecial(false);
+    // Owner-only: only the meeting owner may end the session
+    if (!isOwnerOnly()) {
+      alert('Only the meeting owner can end the session.');
+      return;
     }
+
+    if (!window.confirm('Are you sure you want to end the current session? Active motions will be archived.')) return;
+
+    // End each active motion using the canonical end function so outcomes
+    // are computed consistently (2/3 rule) and archived into history.
+    if (currentSession && typeof currentSession.id === 'string') {
+      // For remote meetings, call endMotion RPC for each open/postponed motion
+      (async () => {
+        try {
+          const data = await sb.fetchMeetingData(currentSession.id);
+          const ids = (data.motions || []).map(m => m.id);
+          for (const id of ids) {
+            try { await sb.endMotion(id); } catch (e) { console.error('Error ending motion', id, e); }
+          }
+        } catch (e) { console.error('Failed to fetch meeting motions to end', e); }
+        refreshFromStorage();
+      })();
+    }
+
+    // clear session pointer and reset UI
+    setCurrentSession(null);
+    setIsFormVisible(false);
+    setMotionTitle('');
+    setMotionDescription('');
+    setMotionSpecial(false);
   };
 
   const handleSubmitMotion = (e) => {
@@ -1123,7 +1135,9 @@ const handleDeleteHistory = async (historyRowId, itemId) => {
               </div>
               <div>
                 <button ref={newMotionBtnRef} className="primary-btn" onClick={handleToggleNewMotion}>New Motion</button>
-                <button className="secondary-btn" onClick={handleEndSession} style={{marginLeft: '10px'}}>End Session</button>
+                {isOwnerOnly() && (
+                  <button className="secondary-btn" onClick={handleEndSession} style={{marginLeft: '10px'}}>End Session</button>
+                )}
                 {/* Manual connect/create removed — meetings are created/selected automatically for signed-in users */}
               </div>
             </>
