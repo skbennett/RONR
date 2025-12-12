@@ -23,7 +23,7 @@ function MeetingCard({ meeting, user, attendeesByMeeting, attendeesLoading, atte
         ) : (
           <button className="join-btn joined" disabled>Member</button>
         )}
-        <button className="remove-btn" onClick={() => handleLeave(meeting)} disabled={meeting.my_role === 'owner'}>
+        <button className="remove-btn" onClick={() => handleLeave(meeting.id)} disabled={meeting.my_role === 'owner'}>
           Leave
         </button>
         {meeting.my_role === 'owner' && (
