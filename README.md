@@ -5,7 +5,7 @@ By: Jason, Keegan, and Shane
 
 Access at: [https://ronr.vercel.app/](https://ronr.vercel.app/)
 
-Video Link: [youtube.com](youtube.com)
+Video Link: [YouTube](https://youtu.be/OeN0nv5W6qk)
 # Website Features
 ## Homepage
 ![Homepage](/readme_images/Homepage.PNG)
