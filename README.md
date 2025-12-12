@@ -9,18 +9,22 @@ Video Link: [youtube.com](youtube.com)
 # Website Features
 ## Homepage
 ![Homepage](/readme_images/Homepage.PNG)
-#### Features
+   
 Our homepage showcases what our website is, and it has links to our other pages that allow a user to use the website.
 
 ## Login
 ![Signin](/readme_images/signin.PNG) ![Signup](/readme_images/signup.PNG)
-#### Features
+   
 Our website allows users to make accounts and sign in with them. We used Supabase Auth for this which simplifies login on our end and is more secure. We require usernames and emails to be unique, so both can be used to identify an individual user.
 
 ## Meetings Page
-![Meetings1](/readme_images/meetings1.PNG) ![Meetings2](/readme_images/meetings2.PNG)
-#### Features
-Our meetings page allows a user to make a new meeting, join meetings, invite others to meetings, and manage a meeting if they are the owner. The owner of a meeting can invite, remove, or transfer ownership of a meeting to another user. The owner can also end the meeting which will download a copy of the meeting minutes for them.
+![Meetings1](/readme_images/meetings1.PNG) 
+   
+Any user can create a meeting or get invited to another user's meeting.
+
+![Meetings2](/readme_images/meetings2.PNG)
+
+The owner of a meeting can invite, remove, or transfer ownership of a meeting to another user. The owner can also end the meeting which will download a copy of the meeting minutes for them.
 
 ## Coordination
 Once in a meeting, the user can interact with others in the meeting.  
@@ -43,3 +47,31 @@ The history of all active and finished motions is stored at the bottom of the pa
 
 # Database
 For our database we used supabase because the data for this website is naturally very structured, so SQL was a good choice for this. This also covered our need for user authentication with the same backend.
+
+## Meetings Table
+![meetings](/readme_images/database/db_meetings.PNG)
+
+## Invitations Table
+![invites](/readme_images/database/db_invitations.PNG)
+
+## Meeting Attendees Table
+![attendees](/readme_images/database/db_attendees.PNG)
+
+## Motions Table
+![motions](/readme_images/database/db_motions.PNG)
+
+## Motion Replies Table
+![motionreplies](/readme_images/database/db_motion_replies.PNG)
+
+## Votes Table
+![votes](/readme_images/database/db_votes.PNG)
+
+## Meeting History Table
+![history](/readme_images/database/db_meeting_history.PNG)
+
+## Chats Table
+![chats](/readme_images/database/db_chats.PNG)
+
+## Profiles Table
+![profiles](/readme_images/database/db_profiles.PNG)
+
