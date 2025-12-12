@@ -46,7 +46,7 @@ There is also a general meeting chat at the below the motions that allow users t
 The history of all active and finished motions is stored at the bottom of the page. It allows users to see all motions and who voted for or against them as well as all discussion for the motion.
 
 # Database
-For our database we used supabase because the data for this website is naturally very structured, so SQL was a good choice for this. This also covered our need for user authentication with the same backend.
+For our database we used supabase because the data for this website is naturally very structured, so SQL was a good choice for this. This also covered our need for user authentication with the same backend. We do not store user credentials in our database.
 
 ## Meetings Table
 ![meetings](/readme_images/database/db_meetings.PNG)
@@ -91,3 +91,8 @@ Chats are stored by the meeting id, the user's id, the message text, and a times
 ![profiles](/readme_images/database/db_profiles.PNG)
 
 This is the simplest table. It ties the user's chosen name to their unique id. They are able to update this name to display on the site, but their id is always attached to their email which cannot change. The rules are: this table can be viewed by any user, only user's can make their own profile, and only users can change their profile.
+
+
+# API Data
+   
+[API Information](/BACKEND_API.md)
