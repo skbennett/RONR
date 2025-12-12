@@ -11,7 +11,7 @@ The backend is **Supabase** (Auth + Postgres + Realtime + RLS + RPC functions), 
 
 - **Frontend**: `react-app/` (Vite + React) calls Supabase directly via `@supabase/supabase-js`.
 - **Auth**: Supabase Auth (`supabase.auth.*`) with session persisted in browser.
-- **Database**: Postgres (Supabase) with Row Level Security (RLS) enforced.
+- **Database**: PostgreSQL (Supabase) with Row Level Security (RLS) enforced.
 - **Realtime**: Supabase Realtime channels subscribe to Postgres changes in selected tables.
 
 ---
@@ -165,7 +165,7 @@ Constraints:
 - Unique `(motion_id, user_id)`
 
 #### `public.chats`
-Chat messages scoped to a meeting.
+Chat messages scoped to a single meeting.
 
 Columns:
 - `id uuid PK`
