@@ -421,7 +421,7 @@ export async function fetchMeetingData(meetingId) {
   return { meeting, motions: motionsWithReplies, votes, chats: enrichedChats, history: history || [], emailMap, usernameMap };
 }
 
-export async function proposeMotion(meetingId, title, description = '') {
+export async function proposeMotion(meetingId, title, description = '', special = false) {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');
 
@@ -429,7 +429,8 @@ export async function proposeMotion(meetingId, title, description = '') {
     meeting_id: meetingId,
     title,
     description,
-    proposer: user.id
+    proposer: user.id,
+    special
   }).select().single();
 
   if (!error) {
@@ -440,7 +441,7 @@ export async function proposeMotion(meetingId, title, description = '') {
 }
 
 // propose a sub-motion (parent_id optional)
-export async function proposeSubMotion(meetingId, parentId, title, description = '') {
+export async function proposeSubMotion(meetingId, parentId, title, description = '', special = false) {
   const user = await getUser();
   if (!user) throw new Error('Not authenticated');
   const { data, error } = await supabase.from('motions').insert({
@@ -448,7 +449,8 @@ export async function proposeSubMotion(meetingId, parentId, title, description =
     parent_id: parentId,
     title,
     description,
-    proposer: user.id
+    proposer: user.id,
+    special
   }).select().single();
   if (!error) {
     await supabase.from('meeting_history').insert({ meeting_id: meetingId, event_type: 'submotion_proposed', event: { motion: data } });

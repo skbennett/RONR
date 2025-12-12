@@ -561,7 +561,7 @@ function Coordination() {
     // remote if currentSession looks like a meeting id
     if (currentSession && typeof currentSession.id === 'string') {
       (async () => {
-        const { data, error } = await sb.proposeSubMotion(currentSession.id, parentId, vals.title.trim(), (vals.description || '').trim());
+        const { data, error } = await sb.proposeSubMotion(currentSession.id, parentId, vals.title.trim(), (vals.description || '').trim(), vals.special || false);
         if (error) { alert('Failed to add sub-motion.'); console.error(error); return; }
         // postpone the parent motion on the server
         try { await sb.postponeMotion(parentId); } catch (e) { console.warn('failed to postpone parent motion', e); }
@@ -624,6 +624,12 @@ function Coordination() {
 
   // --- Reply helpers ---
   const showReplyForm = (id) => {
+    // Check if motion is special - discussion is not allowed on special motions
+    const motion = activeMotions.find(m => m.id === id);
+    if (motion && motion.special) {
+      alert('Discussion is not allowed on special motions.');
+      return;
+    }
     // Toggle reply form: open with defaults if closed, close and clear values if open
     setReplyFormVisible(prev => ({ ...prev, [id]: !prev[id] }));
     setReplyFormValues(prev => {
@@ -665,6 +671,12 @@ function Coordination() {
   const handleSubmitReply = (motionId) => {
     const vals = replyFormValues[motionId] || {};
     if (!vals.text || vals.text.trim() === '') { alert('Please enter reply text.'); return; }
+    // Check if motion is special - discussion is not allowed on special motions
+    const motion = activeMotions.find(m => m.id === motionId);
+    if (motion && motion.special) {
+      alert('Discussion is not allowed on special motions.');
+      return;
+    }
     // default missing stance to 'neutral' rather than showing a popup
     const stance = vals.stance || 'neutral';
     if (currentSession && typeof currentSession.id === 'string') {
@@ -681,6 +693,12 @@ function Coordination() {
 
   // --- Reply edit/delete helpers ---
   const showReplyEditForm = (motionId, reply) => {
+    // Check if motion is special - discussion is not allowed on special motions
+    const motion = activeMotions.find(m => m.id === motionId);
+    if (motion && motion.special) {
+      alert('Discussion is not allowed on special motions.');
+      return;
+    }
     setReplyEditVisible(prev => ({ ...prev, [reply.id]: !prev[reply.id] }));
     setReplyEditValues(prev => {
       const copy = { ...prev };
@@ -717,6 +735,15 @@ function Coordination() {
   const handleSubmitReplyEdit = (replyId) => {
     const vals = replyEditValues[replyId] || {};
     if (!vals.text || vals.text.trim() === '') { alert('Please enter reply text.'); return; }
+    // Check if motion is special - discussion is not allowed on special motions
+    const motionId = vals.motionId;
+    if (motionId) {
+      const motion = activeMotions.find(m => m.id === motionId);
+      if (motion && motion.special) {
+        alert('Discussion is not allowed on special motions.');
+        return;
+      }
+    }
     if (currentSession && typeof currentSession.id === 'string') {
       (async () => {
         const { data, error } = await sb.updateReply(replyId, vals.text.trim(), vals.stance);
@@ -901,7 +928,7 @@ function Coordination() {
     }
       if (currentSession && typeof currentSession.id === 'string') {
       (async () => {
-        const { data, error } = await sb.proposeMotion(currentSession.id, motionTitle, motionDescription || '');
+        const { data, error } = await sb.proposeMotion(currentSession.id, motionTitle, motionDescription || '', motionSpecial);
         if (error) { alert('Failed to propose motion.'); console.error(error); return; }
         // refresh list
         refreshFromStorage();
